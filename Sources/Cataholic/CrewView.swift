@@ -110,10 +110,7 @@ struct CrewView: View {
                 .help(tip)
                 // Right-click: the emotes as a normal Mac menu — the same actions the hover ring played.
                 .contextMenu {
-                    Button(CataholicLink.url == nil ? "Set my double-click link…" : "Open my link") {
-                        if CataholicLink.url == nil { CataholicLink.ask() } else { CrewPanel.openDesk(find: nil) }
-                    }
-                    if CataholicLink.url != nil { Button("Change my link…") { CataholicLink.ask() } }
+                    LauncherMenu()
                     Button { model.stopAction(); CrewPanel.stopLife(); CrewSound.meow(); CrewPanel.zoomies() } label: {
                         Label("Zoomies", systemImage: "hare")
                     }
@@ -280,9 +277,9 @@ struct CrewView: View {
     private var tip: String {
         let n = model.needsCount
         switch model.pose {
-        case .needs: return "\(agent.name) · \(n) for you"
+        case .needs: return "\(n) · \(MailStore.shared.note.isEmpty ? "needs you" : MailStore.shared.note)"
         case .working: return "\(agent.name) · working"
-        case .sleeping: return "\(agent.name) · double-click: \(CataholicLink.url?.host ?? "zoomies")"
+        case .sleeping: return "\(agent.name) · double-click: \(Launcher.favorite?.name ?? "zoomies")"
         case .reading:
             if let p = model.peek { return "\(agent.name) · reading \(p.who)" }
             return "\(agent.name) · reading…"

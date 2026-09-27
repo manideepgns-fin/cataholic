@@ -46,17 +46,10 @@ enum CrewPanel {
     /// A click on the cat: the web Billing Desk (`?find=` rides along when the
     /// owner searched from Raycast). The zoom game keeps working — the cat
     /// stays fun.
+    /// Double-click: open the quick launcher's favourite (a link or an app). None saved → zoomies.
     static func openDesk(find: String?) {
-        guard !AtlanceConfig.billingDeskURL.isEmpty else {        // no link set: double-click = zoomies
-            stopLife(); zoomies(); return
-        }
-        var url = AtlanceConfig.billingDeskURL
-        if let q = find, !q.isEmpty {
-            var c = URLComponents(string: url)!
-            c.queryItems = [URLQueryItem(name: "find", value: q)]
-            url = c.url?.absoluteString ?? url
-        }
-        if let u = URL(string: url) { NSWorkspace.shared.open(u) }
+        guard let fav = Launcher.favorite else { stopLife(); zoomies(); return }
+        Launcher.open(fav)
         deskOpen = true
         model?.dismissWhisper()
     }

@@ -7,10 +7,15 @@
 	<key>CFBundleIdentifier</key><string>app.cataholic.Cataholic</string>
 	<key>CFBundleExecutable</key><string>Cataholic</string>
 	<key>CFBundlePackageType</key><string>APPL</string>
-	<key>CFBundleShortVersionString</key><string>0.1.0</string>
-	<key>CFBundleVersion</key><string>1</string>
+	<key>CFBundleShortVersionString</key><string>0.2.0</string>
+	<key>CFBundleVersion</key><string>2</string>
 	<key>LSMinimumSystemVersion</key><string>13.0</string>
 	<key>LSUIElement</key><true/>
+	<key>CFBundleURLTypes</key>
+	<array><dict>
+		<key>CFBundleURLName</key><string>Cataholic links</string>
+		<key>CFBundleURLSchemes</key><array><string>cataholic</string></array>
+	</dict></array>
 	<key>NSHumanReadableCopyright</key><string>Cat sounds: CC0 / public domain (see Sounds/CREDITS.md)</string>
 </dict>
 </plist>

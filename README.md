@@ -10,14 +10,23 @@ A chunky cat (or a hundred) that lives on your Mac.
 - **Zoomies** — a leg-scramble start, a galloping run, hops, and skids that lean back.
 - **The multiplier** — right-click → *More cats* → up to 100 cats raining onto your screen. They never block a
   click; only your own cat is pettable.
-- **Pet it** — click for a purr and a happy squint. Double-click opens a link you choose (or starts zoomies).
+- **Pet it** — click for a purr and a happy squint.
+- **Quick launch** — save links and apps (right-click → *Quick launch*); double-click the cat opens your favourite
+  (no favourite yet → zoomies).
+- **Signs** — any app or script can make your cat hold up a number, and it whispers when the number goes up:
+
+  ```bash
+  open "cataholic://sign?count=3&note=Build%20failed"   # hold up 3
+  open "cataholic://sign?count=0"                         # put it down
+  open "cataholic://zoomies"
+  ```
 - Naps melted flat when you're away. Quiet mode and Reduce Motion calm everything down.
 
 Cat sounds are CC0 / public-domain recordings — see `Resources/Sounds/CREDITS.md`.
 
 ## Install
 
-1. Download `Cataholic-0.1.0.zip` from [Releases](../../releases), unzip it, and drag **Cataholic** into Applications.
+1. Download `Cataholic-0.2.0.zip` from [Releases](../../releases), unzip it, and drag **Cataholic** into Applications.
 2. **This first release isn't signed by Apple yet** (the developer account is still being approved), so macOS
    will refuse the first launch. Open **System Settings → Privacy & Security**, scroll down, and click
    **Open Anyway** next to Cataholic. You only do this once. Signed builds are coming, and they'll open normally.
