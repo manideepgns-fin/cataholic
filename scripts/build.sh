@@ -12,5 +12,6 @@ rm -rf "$APP"; mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 lipo -create "$ROOT/.build/Cataholic-arm64" "$ROOT/.build/Cataholic-x86_64" -output "$APP/Contents/MacOS/Cataholic"
 cp "$ROOT/Resources/Info.plist" "$APP/Contents/Info.plist"
 cp -R "$ROOT/Resources/Sounds" "$APP/Contents/Resources/Sounds"
+[[ -f "$ROOT/Resources/AppIcon.icns" ]] && cp "$ROOT/Resources/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
 codesign --force --deep --sign - "$APP" >/dev/null
 echo "Built: $APP"

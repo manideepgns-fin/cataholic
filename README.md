@@ -26,7 +26,7 @@ Cat sounds are CC0 / public-domain recordings — see `Resources/Sounds/CREDITS.
 
 ## Install
 
-1. Download `Cataholic-0.2.0.zip` from [Releases](../../releases), unzip it, and drag **Cataholic** into Applications.
+1. Download `Cataholic-0.2.1.zip` from [Releases](../../releases), unzip it, and drag **Cataholic** into Applications.
 2. **This first release isn't signed by Apple yet** (the developer account is still being approved), so macOS
    will refuse the first launch. Open **System Settings → Privacy & Security**, scroll down, and click
    **Open Anyway** next to Cataholic. You only do this once. Signed builds are coming, and they'll open normally.

@@ -34,6 +34,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             MainActor.assumeIsolated { CataholicRender.coats(to: args[i + 1]) }
             NSApp.terminate(nil); return
         }
+        // `--render-icon <file.png>`: the 1024×1024 app icon (scripts/make-icon.sh turns it into AppIcon.icns).
+        if let i = args.firstIndex(of: "--render-icon"), i + 1 < args.count {
+            MainActor.assumeIsolated { CataholicRender.icon(to: args[i + 1]) }
+            NSApp.terminate(nil); return
+        }
         NSApp.setActivationPolicy(.accessory)
         // A pet does something every minute or so (the Atlance cat, a colleague at work, waits ~6 min).
         CrewModel.Tune.meanWait = 50
@@ -195,6 +200,29 @@ enum MailClearanceFmt {
             .padding(24).background(Color(red: 0.13, green: 0.13, blue: 0.15))
         let r = ImageRenderer(content: sheet)
         r.scale = 2
+        guard let img = r.nsImage, let tiff = img.tiffRepresentation,
+              let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]) else { return }
+        try? png.write(to: URL(fileURLWithPath: path))
+    }
+    /// The app icon: Ginger in her glasses on a peach tile, drawn at 1024 px. Laid out in points on a 224-pt canvas
+    /// (Apple's grid: an 824/1024 tile) and rendered at ×(1024/224), so the cat is drawn crisp, never scaled up.
+    static func icon(to path: String) {
+        let k: CGFloat = 1024 / 224
+        let tile = RoundedRectangle(cornerRadius: 40, style: .continuous)
+        let art = ZStack {
+            tile.fill(LinearGradient(colors: [Color(red: 1.0, green: 0.90, blue: 0.76), Color(red: 0.99, green: 0.78, blue: 0.58)],
+                                     startPoint: .top, endPoint: .bottom))
+                .frame(width: 180, height: 180)
+                .shadow(color: .black.opacity(0.22), radius: 5, y: 3)
+            Ellipse().fill(Color(red: 0.80, green: 0.50, blue: 0.28).opacity(0.28))
+                .frame(width: 124, height: 14).offset(y: 70)
+            CrewCharacter(state: .look, badge: "", colors: CrewSkinColors(), pin: false, coatOverride: .ginger)
+                .scaleEffect(1.42)
+                .offset(y: 0)
+        }
+        .frame(width: 224, height: 224)
+        let r = ImageRenderer(content: art)
+        r.scale = k
         guard let img = r.nsImage, let tiff = img.tiffRepresentation,
               let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]) else { return }
         try? png.write(to: URL(fileURLWithPath: path))
