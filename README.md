@@ -30,10 +30,8 @@ Cat sounds are CC0 / public-domain recordings — see `Resources/Sounds/CREDITS.
 
 ## Install
 
-1. Download `Cataholic-0.2.1.zip` from [Releases](../../releases), unzip it, and drag **Cataholic** into Applications.
-2. **This first release isn't signed by Apple yet** (the developer account is still being approved), so macOS
-   will refuse the first launch. Open **System Settings → Privacy & Security**, scroll down, and click
-   **Open Anyway** next to Cataholic. You only do this once. Signed builds are coming, and they'll open normally.
+1. Download `Cataholic-0.3.0.zip` from [Releases](../../releases), unzip it, and drag **Cataholic** into Applications.
+2. Open it. It's signed and notarized by Apple, so it opens like any other app.
 3. A paw appears in your menu bar and a cat in the top-right corner. Right-click the cat for everything.
 
 Needs macOS 13 (Ventura) or later. Runs natively on Apple silicon and Intel.
