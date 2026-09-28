@@ -13,6 +13,10 @@ A chunky cat (or a hundred) that lives on your Mac.
 - **Pet it** — click for a purr and a happy squint.
 - **Quick launch** — save links and apps (right-click → *Quick launch*); double-click the cat opens your favourite
   (no favourite yet → zoomies).
+- **Waiting for you** — right-click → *Waiting for you* → *Watch a link…* and paste a page you keep open in Chrome.
+  When its tab title shows a number — like “(3) Billing Desk” or “Inbox (12) - Gmail” — your cat holds it up, and a
+  Mac notification tells you when it goes up. Click the notification (or the row) to jump to that tab. The first
+  time, macOS asks whether Cataholic may control Chrome: that's how it reads your tab titles. Nothing leaves your Mac.
 - **Signs** — any app or script can make your cat hold up a number, and it whispers when the number goes up:
 
   ```bash

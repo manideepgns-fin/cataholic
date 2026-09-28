@@ -17,6 +17,7 @@ struct CataholicApp: App {
             }
             Menu("Cat") { ForEach(CatCoat.all, id: \.id) { c in Button(c.name) { CatCoat.set(c); CrewPanel.applyPrefs() } } }
             Button("Zoomies!") { CrewPanel.stopLife(); CrewPanel.zoomies() }
+            WatchMenu()
             LauncherMenu()
             Divider()
             Toggle("Launch at login", isOn: Binding(get: { SMAppService.mainApp.status == .enabled },
@@ -44,6 +45,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         CrewModel.Tune.meanWait = 50
         CrewModel.Tune.minGap = 15
         CrewPanel.show()
+        MainActor.assumeIsolated { Watcher.start() }
     }
     func application(_ application: NSApplication, open urls: [URL]) {
         MainActor.assumeIsolated { urls.forEach(CataholicLinks.handle) }
@@ -173,9 +175,14 @@ struct MailCase: Identifiable { let id: String; let title: String; let status: S
     private(set) var note = ""
     var signCount: Int { cases.count }
     var yourMove: [MailCase] { cases }
-    func setSign(count: Int, note: String) {
-        self.note = note
-        cases = (0..<max(0, min(count, 999))).map { MailCase(id: "\($0)", title: note, status: "Needs you", next: "") }
+    private var link = (count: 0, note: "")          // from a cataholic://sign link
+    private var watched: [(String, Int)] = []         // from Chrome tabs (Watcher), the one that just grew first
+    func setSign(count: Int, note: String) { link = (max(0, count), note); rebuild() }
+    func setWatchSign(_ rows: [(String, Int)]) { watched = rows; rebuild() }
+    private func rebuild() {
+        let rows = watched + (link.count > 0 ? [(link.note, link.count)] : [])
+        note = rows.first?.0 ?? ""
+        cases = rows.flatMap { r in (0..<min(r.1, 999)).map { MailCase(id: "\(r.0)-\($0)", title: r.0, status: "Needs you", next: "") } }
     }
 }
 

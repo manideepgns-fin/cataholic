@@ -110,6 +110,7 @@ struct CrewView: View {
                 .help(tip)
                 // Right-click: the emotes as a normal Mac menu — the same actions the hover ring played.
                 .contextMenu {
+                    WatchMenu()
                     LauncherMenu()
                     Button { model.stopAction(); CrewPanel.stopLife(); CrewSound.meow(); CrewPanel.zoomies() } label: {
                         Label("Zoomies", systemImage: "hare")
