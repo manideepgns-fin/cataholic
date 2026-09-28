@@ -19,7 +19,7 @@ struct CrewView: View {
     let agent: CrewModel.Agent
     var body: some View {
         Group {
-            if lifeOffSchedule {
+            if lifeOffSchedule || !moving {
                 TimelineView(.explicit([])) { tl in
                     lifeFrame(date: tl.date)
                 }
@@ -157,17 +157,18 @@ struct CrewView: View {
                 // Whisper: one line for 3s when yourMove grows, web desk closed.
                 if overlays.contains(.whisper), let w = model.whisper {
                     let R = CrewLayout.Overlay.whisper.rect
+                    // Notification-sized (owner 28 Sep 2026: "too big") — 13 pt, hugging its text, next to the cat.
                     Text(w)
-                        .font(.system(size: 13 * u))
+                        .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(Color(red: 0.13, green: 0.12, blue: 0.15))
                         .lineLimit(1).truncationMode(.tail)
-                        .frame(width: 250 * u, alignment: .leading)
-                        .padding(.horizontal, 12 * u).padding(.vertical, 8 * u)
-                        .frame(width: R.width * u, height: R.height * u)
+                        .padding(.horizontal, 10).padding(.vertical, 6)
                         .background(Color(red: 0.984, green: 0.973, blue: 0.945),
-                                    in: RoundedRectangle(cornerRadius: 14 * u))
+                                    in: RoundedRectangle(cornerRadius: 10))
+                        .shadow(color: .black.opacity(0.18), radius: 3, y: 1)
+                        .frame(width: R.width * u, height: R.height * u, alignment: .trailing)
                         .offset(x: R.minX * u, y: R.minY * u)
-                        .allowsHitTesting(false)
+                        .onTapGesture { model.dismissWhisper(); Watcher.openBusiest() }
                 }
                 // Say-hi bubble: sits just above-left of the head (≤ 6 pt from the ear)
                 // with a small tail pointing at the cat. Fixed 34×26 so its bounds
@@ -278,7 +279,7 @@ struct CrewView: View {
     private var tip: String {
         let n = model.needsCount
         switch model.pose {
-        case .needs: return "\(n) · \(MailStore.shared.note.isEmpty ? "needs you" : MailStore.shared.note)"
+        case .needs: return "\(n) waiting · \(MailStore.shared.note.isEmpty ? "needs you" : MailStore.shared.note)"
         case .working: return "\(agent.name) · working"
         case .sleeping: return "\(agent.name) · double-click: \(Launcher.favorite?.name ?? "zoomies")"
         case .reading:
@@ -316,6 +317,12 @@ struct CrewView: View {
     // work then). Quiet/Reduce Motion park on an empty explicit schedule:
     // static pose + blink only.
     private var lifeOffSchedule: Bool { Fx.reduced || CrewPrefs.quiet }
+    /// Frames only while something moves (owner 28 Sep 2026: "if its idle its idle, no theatrics"). At rest the cat
+    /// is ONE still frame — no breathing, tail sway, blinks or eyes on the pointer — and redraws only when its state
+    /// changes (the model publishes). A 30 fps life layer cost ~12% CPU and leaked memory every frame.
+    private var moving: Bool {
+        model.action != .none || model.runFacing != 0 || model.airborne || model.jumpCrouch || model.squash != 1
+    }
     private func lifeBreatheScale(_ t: Double) -> CGFloat {
         guard lifeBreathing else { return 1 }
         return 1 + 0.0075 * CGFloat(0.5 + 0.5 * sin(t * 2 * .pi / lifeBreathPeriod))

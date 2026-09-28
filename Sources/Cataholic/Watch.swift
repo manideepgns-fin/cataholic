@@ -122,6 +122,11 @@ struct Watch: Codable, Equatable, Identifiable {
         }
     }
 
+    /// The whisper's click: the watched page with the most waiting.
+    static func openBusiest() {
+        if let w = watches.max(by: { (counts[$0.id] ?? 0) < (counts[$1.id] ?? 0) }), (counts[w.id] ?? 0) > 0 { open(w) }
+    }
+
     static func remove(_ w: Watch) { watches.removeAll { $0 == w } }
 
     static func add() {

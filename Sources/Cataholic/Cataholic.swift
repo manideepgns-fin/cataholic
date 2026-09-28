@@ -41,9 +41,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             NSApp.terminate(nil); return
         }
         NSApp.setActivationPolicy(.accessory)
-        // A pet does something every minute or so (the Atlance cat, a colleague at work, waits ~6 min).
-        CrewModel.Tune.meanWait = 50
-        CrewModel.Tune.minGap = 15
         CrewPanel.show()
         MainActor.assumeIsolated { Watcher.start() }
     }

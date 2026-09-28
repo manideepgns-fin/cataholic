@@ -14,8 +14,8 @@ A chunky cat (or a hundred) that lives on your Mac.
 - **Quick launch** — save links and apps (right-click → *Quick launch*); double-click the cat opens your favourite
   (no favourite yet → zoomies).
 - **Waiting for you** — right-click → *Waiting for you* → *Watch a link…* and paste a page you keep open in Chrome.
-  When its tab title shows a number — like “(3) Billing Desk” or “Inbox (12) - Gmail” — your cat holds it up, and a
-  Mac notification tells you when it goes up. Click the notification (or the row) to jump to that tab. The first
+  When its tab title shows a number — like “(3) Billing Desk” or “Inbox (12) - Gmail” — your cat holds it up; when it goes up
+  the cat leaps out to the middle of your screen and says so, and a Mac notification lands in Notification Center. Click the notification (or the row) to jump to that tab. The first
   time, macOS asks whether Cataholic may control Chrome: that's how it reads your tab titles. Nothing leaves your Mac.
 - **Signs** — any app or script can make your cat hold up a number, and it whispers when the number goes up:
 
@@ -24,13 +24,14 @@ A chunky cat (or a hundred) that lives on your Mac.
   open "cataholic://sign?count=0"                         # put it down
   open "cataholic://zoomies"
   ```
+- **Light as a feather** — at rest the cat is one still picture: ~0% CPU, ~30 MB. It only animates when it moves.
 - Naps melted flat when you're away. Quiet mode and Reduce Motion calm everything down.
 
 Cat sounds are CC0 / public-domain recordings — see `Resources/Sounds/CREDITS.md`.
 
 ## Install
 
-1. Download `Cataholic-0.3.0.zip` from [Releases](../../releases), unzip it, and drag **Cataholic** into Applications.
+1. Download `Cataholic-0.3.1.zip` from [Releases](../../releases), unzip it, and drag **Cataholic** into Applications.
 2. Open it. It's signed and notarized by Apple, so it opens like any other app.
 3. A paw appears in your menu bar and a cat in the top-right corner. Right-click the cat for everything.
 

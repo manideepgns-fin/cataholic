@@ -51,9 +51,11 @@ final class CrewModel: ObservableObject {
 
     init() {
         let store = MailStore.shared
-        store.$cases.sink { [weak self] _ in self?.retick() }.store(in: &subs)
-        store.$watchRunning.sink { [weak self] _ in self?.retick() }.store(in: &subs)
-        store.$agentNow.sink { [weak self] _ in self?.retick() }.store(in: &subs)
+        // @Published fires on willSet — read the new value on the next turn of the run loop, or every rise
+        // is seen one step late (the "something new" alert never fired before 0.3.1).
+        store.$cases.sink { [weak self] _ in DispatchQueue.main.async { self?.retick() } }.store(in: &subs)
+        store.$watchRunning.sink { [weak self] _ in DispatchQueue.main.async { self?.retick() } }.store(in: &subs)
+        store.$agentNow.sink { [weak self] _ in DispatchQueue.main.async { self?.retick() } }.store(in: &subs)
         retick()
         scheduleNext(initial: true)
         Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
@@ -118,13 +120,14 @@ final class CrewModel: ObservableObject {
             // line for 3s, never while it is open (tracked via deskOpen).
             if !CrewPanel.deskOpen, let first = MailStore.shared.yourMove.first {
                 let (who, _) = MailClearanceFmt.splitTitle(first.title, fallback: first.next)
-                whisper = "\(n) need you — \(who)…"
+                whisper = "\(n - max(lastNeeds, 0)) new in \(who) · \(n) waiting"
+                CrewPanel.announce()
                 let w = DispatchWorkItem { [weak self] in
                     Task { @MainActor in self?.whisper = nil }
                 }
                 whisperWork?.cancel()
                 whisperWork = w
-                DispatchQueue.main.asyncAfter(deadline: .now() + 3, execute: w)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 10, execute: w)
             }
         }
         lastNeeds = n
@@ -140,6 +143,7 @@ final class CrewModel: ObservableObject {
     /// All tunables in ONE struct so the owner can tune them. Weights pick the
     /// next scheduled action; work reactions + clingy are event-driven.
     struct Tune {
+        static var autonomous = false            // Cataholic 0.3.1: an idle cat sits still (owner 28 Sep 2026)
         static var meanWait: Double = 360        // mean ~6 min between actions
         static var minGap: Double = 90           // never < 90 s between actions
         static var hiMaxPer30Min = 1             // "hi" at most once per 30 min
@@ -232,7 +236,7 @@ final class CrewModel: ObservableObject {
     }
 
     private func fireNext() {
-        guard !lifeOff, action == .none, !ringOpen, !CrewPanel.zooming else { return }
+        guard Tune.autonomous, !lifeOff, action == .none, !ringOpen, !CrewPanel.zooming else { return }
         guard macIdle() < Tune.idleGrace else { return }   // Mac in use only
         let hiOK = Date().timeIntervalSince(lastHiAt) > 1800
         var pool: [(Action, Int)] = []
@@ -401,7 +405,7 @@ final class CrewModel: ObservableObject {
     /// Once-a-second watch: welcome-back hi + clingy proximity. No work when
     /// hidden — CrewPanel hides the panel, and tickSecond early-outs there.
     func tickSecond() {
-        guard !lifeOff else { return }
+        guard Tune.autonomous, !lifeOff else { return }
         let idle = macIdle()
         if idle >= Tune.welcomeBackAfter { wasIdleLong = true; lastIdleAt = Date(); return }
         if wasIdleLong, idle < 5 {

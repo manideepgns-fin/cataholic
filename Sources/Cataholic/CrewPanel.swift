@@ -50,7 +50,6 @@ enum CrewPanel {
     static func openDesk(find: String?) {
         guard let fav = Launcher.favorite else { stopLife(); zoomies(); return }
         Launcher.open(fav)
-        deskOpen = true
         model?.dismissWhisper()
     }
 
@@ -338,6 +337,47 @@ enum CrewPanel {
         // Standing on a floor it WALKS along it toward the pointer (no walking on air); it falls if it walks off.
         if !hanging, let at = charTopLeft(screen) { top = at.y }
         glide(toLeft: left, toTop: top, dur: 0.9)
+    }
+    /// Something new is waiting (owner 28 Sep 2026: "jump from corner and say you have new notification"): one leap to
+    /// the middle of the screen, just above the Dock, holding the whisper; home again after 10 s. Never over a
+    /// full-screen app or a presentation, never in Quiet mode / Reduce Motion.
+    private static var announceWork: DispatchWorkItem? = nil
+    static func announce() {
+        guard !zooming, lifeTimer == nil, !CrewPrefs.quiet, !Fx.reduced, !fullScreenInFront(),
+              let screen = CrewScreen.home else { return }
+        guard let from = charTopLeft(screen) else { return }
+        // Landing on the Dock line counts as a new perch (it rewrites the home keys) — keep the real home to go back to.
+        let d = UserDefaults.standard, keys = ["crewLeft", "crewTop", "crewHang"]
+        let saved = keys.map { d.object(forKey: $0) }
+        let vf = screen.visibleFrame, hop = 60 * Double(CrewLayout.zoom)
+        let left = vf.midX - CrewLayout.screenW / 2
+        let top = screen.frame.maxY - vf.minY - CrewLayout.screenH - 8
+        glide(toLeft: left, toTop: top, dur: 0.9, hop: hop)
+        announceWork?.cancel()
+        let w = DispatchWorkItem {
+            MainActor.assumeIsolated {
+                guard !zooming, !CrewMove.holding else { return }          // you picked it up: it lives where you put it
+                glide(toLeft: from.x, toTop: from.y, dur: 0.9, hop: hop) {
+                    for (k, v) in zip(keys, saved) { if let v { d.set(v, forKey: k) } else { d.removeObject(forKey: k) } }
+                    roam = nil
+                    panel?.refit()
+                }
+            }
+        }
+        announceWork = w
+        DispatchQueue.main.asyncAfter(deadline: .now() + 10, execute: w)
+    }
+    /// A window of another app covering the whole screen (a full-screen app, a slideshow).
+    private static func fullScreenInFront() -> Bool {
+        guard let screen = CrewScreen.home,
+              let wins = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]]
+        else { return false }
+        let me = ProcessInfo.processInfo.processIdentifier
+        return wins.contains { w in
+            guard (w[kCGWindowLayer as String] as? Int) == 0, (w[kCGWindowOwnerPID as String] as? Int32) != me,
+                  let b = w[kCGWindowBounds as String] as? [String: CGFloat] else { return false }
+            return (b["Width"] ?? 0) >= screen.frame.width && (b["Height"] ?? 0) >= screen.frame.height
+        }
     }
     static func lifeGlideHome() {
         guard !zooming, let p = panel, let screen = CrewScreen.home else { return }
