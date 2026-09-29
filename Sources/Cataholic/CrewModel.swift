@@ -20,8 +20,6 @@ final class CrewModel: ObservableObject {
     }
     let agents = [Agent()]
     @Published var hoveredId: String? = nil    // slides fully out + tooltip
-    @Published var waveTick = 0                // bumped when needs goes up → one small wave
-    @Published var waveDeg: Double = 0         // the wave itself (view state lives here — no @State)
     @Published var runFacing = 0               // zoomies: 0 = not running · 1 = running right · -1 = left
     @Published var runPhase: Double = 0        // zoomies gallop phase — driven per frame, never animated
     @Published var runStride: Double = 38      // leg swing: 38 = zoomies gallop · 22 = a walk (CrewPanel.glide)
@@ -114,20 +112,20 @@ final class CrewModel: ObservableObject {
     func retick() {
         let n = MailStore.shared.yourMove.count
         if lastNeeds >= 0, n > lastNeeds {
-            reactAlert()
-            if !Fx.reduced { waveTick += 1 }
-            // Step 3 whisper: yourMove grew while the web desk is closed — one
-            // line for 3s, never while it is open (tracked via deskOpen).
+            // Step 3 whisper: yourMove grew while the web desk is closed — one line for 3 s, and the cat bumps
+            // where it sits (owner 29 Sep 2026: "wherever it is, bumps and says you have a new notification from
+            // so and so… and goes back"). Never while the desk is open (tracked via deskOpen).
             if !CrewPanel.deskOpen, let first = MailStore.shared.yourMove.first {
                 let (who, _) = MailClearanceFmt.splitTitle(first.title, fallback: first.next)
-                whisper = "\(n - max(lastNeeds, 0)) new in \(who) · \(n) waiting"
-                CrewPanel.announce()
+                whisper = who.isEmpty ? "New notification" : "New notification from \(who)"
+                CrewPanel.refit()                 // pick the bubble's side before the view draws it (CrewLayout.whisperOnRight)
+                CrewPanel.bump()
                 let w = DispatchWorkItem { [weak self] in
                     Task { @MainActor in self?.whisper = nil }
                 }
                 whisperWork?.cancel()
                 whisperWork = w
-                DispatchQueue.main.asyncAfter(deadline: .now() + 10, execute: w)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 3, execute: w)
             }
         }
         lastNeeds = n
@@ -155,7 +153,7 @@ final class CrewModel: ObservableObject {
         static var clingLeave: Double = 10       // walks home after pointer gone 10 s
         static var lookDist: CGFloat = 300       // eyes follow the pointer within ~300 pt
     }
-    enum Action: Equatable { case none, hi, big, stretch, yawn, groom, spin, look, jump, clingy, alert, nap }
+    enum Action: Equatable { case none, hi, big, stretch, yawn, groom, spin, look, jump, clingy, nap }
     /// Ring order (owner, 26 Sep 2026): Hi · Grow big · Stretch · Yawn · Groom · Chase tail · Look around · Jump · Nap.
     static let ringActions: [(Action, String, String)] = [
         (.hi, "Hi", "hand.wave"),
@@ -278,7 +276,6 @@ final class CrewModel: ObservableObject {
         case .look: dur = playLook(still: still)
         case .jump: dur = playJump(still: still)
         case .clingy: dur = playClingy(still: still)
-        case .alert: dur = playAlert(still: still)
         case .nap: dur = playNap(still: still)
         case .none: return
         }
@@ -318,7 +315,6 @@ final class CrewModel: ObservableObject {
         return 1.6
     }
     private func playClingy(still: Bool) -> Double { 2.0 }
-    private func playAlert(still: Bool) -> Double { 1.5 }
     private func playNap(still: Bool) -> Double { 4.0 }
 
     // MARK: — hover ring dwell (owner, 26 Sep 2026)
@@ -394,12 +390,6 @@ final class CrewModel: ObservableObject {
             action = .none
             CrewPanel.refit()
         }
-    }
-
-    /// Work reaction: needs count went UP → ears up + alert look 1.5 s.
-    private func reactAlert() {
-        guard !lifeOff, action == .none, !ringOpen, !CrewPanel.zooming else { return }
-        startAction(.alert)
     }
 
     /// Once-a-second watch: welcome-back hi + clingy proximity. No work when

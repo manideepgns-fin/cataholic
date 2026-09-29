@@ -338,34 +338,26 @@ enum CrewPanel {
         if !hanging, let at = charTopLeft(screen) { top = at.y }
         glide(toLeft: left, toTop: top, dur: 0.9)
     }
-    /// Something new is waiting (owner 28 Sep 2026: "jump from corner and say you have new notification"): one leap to
-    /// the middle of the screen, just above the Dock, holding the whisper; home again after 10 s. Never over a
-    /// full-screen app or a presentation, never in Quiet mode / Reduce Motion.
-    private static var announceWork: DispatchWorkItem? = nil
-    static func announce() {
-        guard !zooming, lifeTimer == nil, !CrewPrefs.quiet, !Fx.reduced, !fullScreenInFront(),
-              let screen = CrewScreen.home else { return }
-        guard let from = charTopLeft(screen) else { return }
-        // Landing on the Dock line counts as a new perch (it rewrites the home keys) — keep the real home to go back to.
-        let d = UserDefaults.standard, keys = ["crewLeft", "crewTop", "crewHang"]
-        let saved = keys.map { d.object(forKey: $0) }
-        let vf = screen.visibleFrame, hop = 60 * Double(CrewLayout.zoom)
-        let left = vf.midX - CrewLayout.screenW / 2
-        let top = screen.frame.maxY - vf.minY - CrewLayout.screenH - 8
-        glide(toLeft: left, toTop: top, dur: 0.9, hop: hop)
-        announceWork?.cancel()
-        let w = DispatchWorkItem {
-            MainActor.assumeIsolated {
-                guard !zooming, !CrewMove.holding else { return }          // you picked it up: it lives where you put it
-                glide(toLeft: from.x, toTop: from.y, dur: 0.9, hop: hop) {
-                    for (k, v) in zip(keys, saved) { if let v { d.set(v, forKey: k) } else { d.removeObject(forKey: k) } }
-                    roam = nil
-                    panel?.refit()
-                }
+    /// Something new is waiting (owner 29 Sep 2026: "the cat, wherever it is, bumps and says you have a new
+    /// notification… and goes back"): two quick hops on the spot, straight back to where it sat — no trip across the
+    /// screen — while the whisper shows. A cat with no headroom (hanging right under the menu bar) squishes twice
+    /// instead. Never over a full-screen app or a presentation, never in Quiet mode / Reduce Motion.
+    static func bump() {
+        guard !zooming, lifeTimer == nil, !CrewMove.holding, model?.airborne != true, !CrewPrefs.quiet, !Fx.reduced,
+              !fullScreenInFront(), let screen = CrewScreen.home, let at = charTopLeft(screen) else { return }
+        let back = roam                                                  // nil at home; a walked-over cat stays where it is
+        let hop = min(12 * Double(CrewLayout.zoom), Double(at.y - (screen.frame.maxY - screen.visibleFrame.maxY)))   // air up to the menu bar
+        guard hop >= 6 else {
+            model?.land(0.7)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { MainActor.assumeIsolated { model?.land(0.7) } }
+            return
+        }
+        glide(toLeft: at.x, toTop: at.y, dur: 0.3, hop: hop) {
+            glide(toLeft: at.x, toTop: at.y, dur: 0.24, hop: hop * 0.55) {
+                roam = back
+                panel?.refit()
             }
         }
-        announceWork = w
-        DispatchQueue.main.asyncAfter(deadline: .now() + 10, execute: w)
     }
     /// A window of another app covering the whole screen (a full-screen app, a slideshow).
     private static func fullScreenInFront() -> Bool {
@@ -411,6 +403,16 @@ final class CrewNSPanel: NSPanel {
 
     // The cat never takes the keyboard: the work moved to the web desk.
     override var canBecomeKey: Bool { false }
+
+    /// AppKit keeps a window below the menu bar, which shoved a cat parked right under it down by the panel's empty top
+    /// margin whenever a bubble grew the panel. A resting cat draws nothing in that margin, so let it (only it) slide under the bar.
+    override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect {
+        var r = super.constrainFrameRect(frameRect, to: screen)
+        if model.action == .none, !model.ringOpen {
+            r.origin.y += min(max(frameRect.origin.y - r.origin.y, 0), spec.box.y * CrewLayout.zoom)
+        }
+        return r
+    }
 
     init(model: CrewModel) {
         self.model = model
@@ -516,13 +518,22 @@ final class CrewNSPanel: NSPanel {
         let col = (CrewLayout.colGap + CrewLayout.pill.width) * CrewLayout.zoom * 2 + 8
         let roomR = vf.maxX - (anchor.left + CrewLayout.screenW), roomL = anchor.left - vf.minX
         CrewLayout.ringSide = roomR >= col / 2 && roomL >= col / 2 ? .both : (roomL >= roomR ? .left : .right)
+        CrewLayout.whisperOnRight = roomL < 280 * CrewLayout.zoom && roomR > roomL   // the bubble needs ~280 pt (1×) at the cat's left
         let s = CrewLayout.spec(for: model)
         let tucked = CrewPanel.roam == nil && CrewMove.docked && !model.isOut   // hangs off the right edge on purpose
+        // The empty box below the feet may hang off the bottom of the screen (a cat standing on the floor with the Dock
+        // hidden): clamping it back lifted the cat ~26 pt for as long as a pose or bubble was showing. Only the hover
+        // ring, whose pills reach below the box, still needs the room.
+        let ringed = model.ringOpen && model.action == .none
+        let belowFeet: CGFloat = ringed ? 0 : CrewLayout.screenH - CrewGravity.feet
+        // A resting cat draws nothing outside its box but a bubble, so the panel needn't stay under the menu bar either
+        // (a cat parked right beneath it sagged ~18 pt while it announced). Any pose that draws above the box keeps the clamp.
+        let ceiling: CGFloat = model.action == .none && !ringed ? 0 : top - vf.maxY
         let r = CrewLayout.panelRect(charLeft: anchor.left, charTop: anchor.top, spec: s,
                                      // down to the screen's bottom: a cat standing on the Dock line has its box
                                      // (below the feet) over the Dock — clamping there would lift the cat
-                                     within: CGRect(x: vf.minX, y: top - vf.maxY, width: vf.width,
-                                                    height: screen.frame.maxY - (top - vf.maxY) - screen.frame.minY),
+                                     within: CGRect(x: vf.minX, y: ceiling, width: vf.width,
+                                                    height: screen.frame.maxY - ceiling - screen.frame.minY + belowFeet),
                                      tucked: tucked)
         spec = s
         setFrame(NSRect(x: r.minX, y: top - r.maxY, width: r.width, height: r.height), display: true)

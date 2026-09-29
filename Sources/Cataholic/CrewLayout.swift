@@ -61,12 +61,17 @@ enum CrewLayout {
         case whisper, caption
         var rect: CGRect {
             switch self {
-            case .whisper: return CGRect(x: -266, y: 12, width: 274, height: 32)
+            case .whisper: return CGRect(x: whisperOnRight ? 46 : -276, y: 12, width: 274, height: 32)   // left: ends short of the sign the cat holds (x 0.5–13.5)
             case .caption: return CGRect(x: 0, y: 62, width: 40, height: 14)
             }
         }
         var bounds: Bounds { Bounds(x0: rect.minX, y0: rect.minY, x1: rect.maxX, y1: rect.maxY) }
     }
+
+    /// The whisper hangs to the cat's LEFT (it lives at the right edge) — unless the cat is parked so far left that
+    /// the bubble would not fit, when it hangs to the right. Otherwise the panel is pushed back on screen and the
+    /// cat slides sideways when it announces something. Set by the panel (main thread) from where the cat sits.
+    nonisolated(unsafe) static var whisperOnRight = false
 
     /// Snapshot measuring only: a roomy stage that clips nothing.
     static var measureOverride: Spec? = nil
@@ -82,7 +87,6 @@ enum CrewLayout {
         case .stretch: return Bounds(x0: 2.0, y0: 8.5, x1: 41.5, y1: 50.0)     // side-on bow
         case .jump: return Bounds(x0: -0.5, y0: 21.5, x1: 42.0, y1: 50.5)      // side-on leap
         case .clingy: return Bounds(x0: 10.5, y0: 0.0, x1: 43.0, y1: 50.0)     // leaning +8°
-        case .alert: return Bounds(x0: 5.0, y0: 0.0, x1: 41.5, y1: 50.5)
         case .look: return Bounds(x0: 5.0, y0: 0.0, x1: 41.5, y1: 50.5)        // head turned +3
         case .nap: return Bounds(x0: 0.0, y0: 0.0, x1: 46.5, y1: 50.5)          // sitting on the pin, or melted flat when standing
         case .yawn, .groom, .spin, .none: return Bounds(x0: 0.0, y0: 0.0, x1: 41.5, y1: 50.5)  // spin covers the needs sign
@@ -94,7 +98,7 @@ enum CrewLayout {
     /// The bounds the panel must hold: the static drawing plus its motion —
     /// the look turns ±3 pt, the lean is ±8°, the spin flips about the body,
     /// the jump lifts 6 pt, the whole cat rocks ±2.5° about the pin (working
-    /// sway) — ±5.5° while clingy rubs, ±11.5° while the alert wave plays.
+    /// sway) — ±5.5° while clingy rubs.
     static func drawn(_ a: CrewModel.Action) -> Bounds {
         var b = measured(a)
         switch a {
@@ -106,7 +110,7 @@ enum CrewLayout {
             b = b.union(b.mirrored)                         // …and it leaps (crouches) left as well as right
         default: break
         }
-        return b.rocked(a == .alert ? 11.5 : a == .clingy ? 5.5 : 2.5)
+        return b.rocked(a == .clingy ? 5.5 : 2.5)
     }
 
     /// The resting cat as the ring sees it — needs sign at the left to the tail

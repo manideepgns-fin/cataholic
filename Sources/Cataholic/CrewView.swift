@@ -41,7 +41,7 @@ struct CrewView: View {
         let breatheScale = lifeBreatheScale(t)
         let spinScale = model.action == .spin ? cos(spinDegNow(date) * .pi / 180) : 1
         let tilt = running ? sin(model.runPhase) * 4 + model.runLean
-            : swayDeg(pose, t) + model.waveDeg + clingSway(t)
+            : swayDeg(pose, t) + clingSway(t)
         let badge = pose == .needs ? "\(model.needsCount)" : ""
         let shut = (pose == .working && blinkShut(t)) || lifeBlink(t)
         let breatheYOff: CGFloat = pose == .sleeping ? breathe(t) : 0
@@ -89,7 +89,6 @@ struct CrewView: View {
                 .offset(x: tuck)
                 .offset(y: model.action == .jump ? CGFloat(-jumpArc()) * u : 0)
                 .animation(Fx.reduced ? nil : .easeOut(duration: 0.35), value: out)
-                .animation(Fx.reduced ? nil : .easeOut(duration: 0.9), value: model.waveDeg)
                 .animation(Fx.reduced ? nil : .spring(response: 0.3, dampingFraction: 0.5), value: model.bigScale)
                 .animation(Fx.reduced ? nil : .spring(response: 0.28, dampingFraction: 0.42), value: model.squash)
                 // Nothing appears on hover (owner 27 Sep 2026: "remove the emote layer when I hover"):
@@ -140,7 +139,6 @@ struct CrewView: View {
                     }
                     Button(CrewSound.isOn ? "Cat sounds: On" : "Cat sounds: Off") { CrewSound.setEnabled(!CrewSound.isOn) }
                 }
-                .onChange(of: model.waveTick) { _ in wave() }
                 // Step 3: quiet while it works — "N ✉" under the character.
                 // The three overlays draw at their CrewLayout.Overlay rects — fixed frames,
                 // the panel grows to hold exactly these (model.overlays is the shared list).
@@ -166,7 +164,7 @@ struct CrewView: View {
                         .background(Color(red: 0.984, green: 0.973, blue: 0.945),
                                     in: RoundedRectangle(cornerRadius: 10))
                         .shadow(color: .black.opacity(0.18), radius: 3, y: 1)
-                        .frame(width: R.width * u, height: R.height * u, alignment: .trailing)
+                        .frame(width: R.width * u, height: R.height * u, alignment: CrewLayout.whisperOnRight ? .leading : .trailing)
                         .offset(x: R.minX * u, y: R.minY * u)
                         .onTapGesture { model.dismissWhisper(); Watcher.openBusiest() }
                 }
@@ -266,16 +264,6 @@ struct CrewView: View {
         }
     }
 
-    // One small wave when the count goes up, then still.
-    private func wave() {
-        // ±9° is only budgeted in the panel for the alert pose and the resting cat.
-        guard !Fx.reduced, model.action == .none || model.action == .alert else { return }
-        model.waveDeg = -9
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.28) { self.model.waveDeg = 6 }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.55) { self.model.waveDeg = -3 }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { self.model.waveDeg = 0 }
-    }
-
     private var tip: String {
         let n = model.needsCount
         switch model.pose {
@@ -300,7 +288,6 @@ struct CrewView: View {
         case .look: return .look
         case .jump: return .jump
         case .clingy: return .clingy
-        case .alert: return .alert
         case .nap: return .nap
         case .none: break
         }
