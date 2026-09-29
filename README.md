@@ -17,6 +17,8 @@ A chunky cat (or a hundred) that lives on your Mac.
   When its tab title shows a number — like “(3) Billing Desk” or “Inbox (12) - Gmail” — your cat holds it up; when it goes up
   the cat hops where it sits and says who it's from for a few seconds, and a Mac notification lands in Notification Center. Click the notification (or the row) to jump to that tab. The first
   time, macOS asks whether Cataholic may control Chrome: that's how it reads your tab titles. Nothing leaves your Mac.
+- **Updates itself** — checks once a day; a new version is downloaded, verified against the author's signing key and swapped in
+  (the cat relaunches for a second). Right-click → *Check for updates…* to ask right now.
 - **Signs** — any app or script can make your cat hold up a number, and it whispers when the number goes up:
 
   ```bash
@@ -31,8 +33,8 @@ Cat sounds are CC0 / public-domain recordings — see `Resources/Sounds/CREDITS.
 
 ## Install
 
-1. Download `Cataholic-0.3.2.zip` from [Releases](../../releases), unzip it, and drag **Cataholic** into Applications.
-2. Open it. It's signed and notarized by Apple, so it opens like any other app.
+1. Download `Cataholic-0.3.3.zip` from [Releases](../../releases), unzip it, and drag **Cataholic** into Applications.
+2. Open it. It's signed and notarized by Apple, so it opens like any other app — and from here on it keeps itself up to date.
 3. A paw appears in your menu bar and a cat in the top-right corner. Right-click the cat for everything.
 
 Needs macOS 13 (Ventura) or later. Runs natively on Apple silicon and Intel.

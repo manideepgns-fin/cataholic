@@ -1,5 +1,6 @@
 import AppKit
 import ServiceManagement
+import Sparkle
 import SwiftUI
 
 // Cataholic — a chunky desktop cat (or a hundred) for macOS. The cat code is shared with Atlance's menu-bar cat;
@@ -20,6 +21,7 @@ struct CataholicApp: App {
             WatchMenu()
             LauncherMenu()
             Divider()
+            Button("Check for updates…") { Updates.check() }
             Toggle("Launch at login", isOn: Binding(get: { SMAppService.mainApp.status == .enabled },
                                                     set: { on in try? on ? SMAppService.mainApp.register() : SMAppService.mainApp.unregister() }))
             Button("Quit Cataholic") { NSApp.terminate(nil) }
@@ -41,11 +43,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             NSApp.terminate(nil); return
         }
         NSApp.setActivationPolicy(.accessory)
+        _ = Updates.controller                       // Sparkle starts checking (daily, in the background)
         CrewPanel.show()
         MainActor.assumeIsolated { Watcher.start() }
     }
     func application(_ application: NSApplication, open urls: [URL]) {
         MainActor.assumeIsolated { urls.forEach(CataholicLinks.handle) }
+    }
+}
+
+/// Auto-update (owner 29 Sep 2026: "can we get this auto updater also?"). Sparkle reads the feed named in Info.plist
+/// (SUFeedURL: the appcast attached to the latest GitHub release), checks once a day, and installs a signed update by itself.
+/// Updates are signed with the EdDSA key in the owner's login Keychain (public half: SUPublicEDKey) — see scripts/release.sh.
+@MainActor enum Updates {
+    private static let delegate = UpdateDelegate()      // the controller keeps only a weak reference
+    static let controller = SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: delegate, userDriverDelegate: nil)
+    static func check() { controller.checkForUpdates(nil) }
+}
+
+/// A downloaded update installs at once and the cat relaunches (~2 s). Left alone, Sparkle waits for the app to quit —
+/// and a mascot that lives on your desktop for weeks would never update.
+final class UpdateDelegate: NSObject, SPUUpdaterDelegate {
+    func updater(_ updater: SPUUpdater, willInstallUpdateOnQuit item: SUAppcastItem,
+                 immediateInstallationBlock install: @escaping () -> Void) -> Bool {
+        install()
+        return true
     }
 }
 

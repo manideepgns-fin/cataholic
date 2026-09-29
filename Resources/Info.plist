@@ -7,8 +7,8 @@
 	<key>CFBundleIdentifier</key><string>app.cataholic.Cataholic</string>
 	<key>CFBundleExecutable</key><string>Cataholic</string>
 	<key>CFBundlePackageType</key><string>APPL</string>
-	<key>CFBundleShortVersionString</key><string>0.3.2</string>
-	<key>CFBundleVersion</key><string>6</string>
+	<key>CFBundleShortVersionString</key><string>0.3.3</string>
+	<key>CFBundleVersion</key><string>7</string>
 	<key>LSMinimumSystemVersion</key><string>13.0</string>
 	<key>CFBundleIconFile</key><string>AppIcon</string>
 	<key>LSUIElement</key><true/>
@@ -18,6 +18,11 @@
 		<key>CFBundleURLName</key><string>Cataholic links</string>
 		<key>CFBundleURLSchemes</key><array><string>cataholic</string></array>
 	</dict></array>
+	<!-- Auto-update (Sparkle): the appcast rides on every GitHub release; SUPublicEDKey is the public half of the key in the owner's Keychain. -->
+	<key>SUFeedURL</key><string>https://github.com/manideepgns-fin/cataholic/releases/latest/download/appcast.xml</string>
+	<key>SUPublicEDKey</key><string>VMIFQhVKFJ2UtXLa4XoVRe9eWQUYl94QzUJ0oKhI3NM=</string>
+	<key>SUEnableAutomaticChecks</key><true/>
+	<key>SUAutomaticallyUpdate</key><true/>
 	<key>NSHumanReadableCopyright</key><string>Cat sounds: CC0 / public domain (see Sounds/CREDITS.md)</string>
 </dict>
 </plist>

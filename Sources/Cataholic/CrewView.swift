@@ -138,6 +138,7 @@ struct CrewView: View {
                         }
                     }
                     Button(CrewSound.isOn ? "Cat sounds: On" : "Cat sounds: Off") { CrewSound.setEnabled(!CrewSound.isOn) }
+                    Button("Check for updates…") { Updates.check() }
                 }
                 // Step 3: quiet while it works — "N ✉" under the character.
                 // The three overlays draw at their CrewLayout.Overlay rects — fixed frames,
