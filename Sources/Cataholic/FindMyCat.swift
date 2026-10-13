@@ -335,8 +335,8 @@ struct FindRound {
                            flip: Bool.random(using: &rng), cover: c, top: props[i].faceTop)
         }
         func ok(_ c: FindCat) -> Bool { free(c.rect) && !FindScene.blocked(place, c.rect, behind: c.cover) && FindScene.inside(c.box) }
-        // 1. Yours: tucked behind a prop where it is still FAIR (face shows, enough body, reads against its
-        //    surroundings — FindFair); if no prop gives that, out in the open where it reads.
+        // 1. Yours: tucked behind a prop where it is still FAIR (face and ears show, enough body — FindFair);
+        //    if no prop gives that, out in the open.
         let minShow = R.show.lowerBound
         func fair(_ c: FindCat) -> Bool { FindFair.fair(c, place, minShow: minShow) }
         let hideouts = props.indices.filter { props[$0].hides }.shuffled(using: &rng)
@@ -794,36 +794,34 @@ private struct FindCelebration: View {
 // MARK: — the fairness self-check (`Cataholic --check-find [N]`, run by scripts/release.sh before every release)
 
 /// Deals N layouts per level per coat, silently, and checks every placement of your cat and of every lookalike against
-/// FindFair: the face shows, enough of the body shows, and it reads against its surroundings. Prints a table; exit 0 only
-/// when every placement passes (owner 13 Oct 2026, after a white cat hid behind a white snowman).
+/// FindFair: the face and ears show, enough of the body shows, never behind a snowman. Prints a table; exit 0 only
+/// when every placement passes (owner 13 Oct 2026, after a cat hid wholly behind a snowman).
 @MainActor enum FindCheck {
     static func run(_ n: Int) -> Int32 {
         let t0 = Date()
         var failed: String?
         print("Find my cat fairness check — \(n) layouts × \(CatCoat.all.count) coats × 5 levels")
         for lv in 1...5 {
-            var mine = 0, minePass = 0, open = 0, twins = 0, twinPass = 0, worst = 0.0
+            var mine = 0, minePass = 0, open = 0, twins = 0, twinPass = 0, least = 1.0
             for coat in CatCoat.all {
                 for k in 0..<n {
                     let seed = UInt64(lv * 1_000_003 + k * 7_919 + 17)
                     let g = FindGame(level: lv, seed: seed, coat: coat)
                     let place = g.round.place, m = g.mine
-                    let b = FindFair.blend(m, place)
-                    worst = max(worst, b)
-                    let ok = !g.unfair && m.coat == coat && FindFair.faceShows(m)
-                        && FindFair.shown(m) >= g.round.show.lowerBound - 0.001 && b <= FindFair.maxBlend
+                    least = min(least, Double(FindFair.shown(m)))
+                    let ok = !g.unfair && m.coat == coat && FindFair.fair(m, place, minShow: g.round.show.lowerBound)
                     mine += 1
-                    if ok { minePass += 1 } else if failed == nil { failed = "L\(lv) coat \(coat.id) seed \(seed): your cat (blend \(String(format: "%.2f", b)))" }
+                    if ok { minePass += 1 } else if failed == nil { failed = "L\(lv) coat \(coat.id) seed \(seed): your cat (shows \(String(format: "%.2f", FindFair.shown(m))))" }
                     if m.cover == nil { open += 1 }
                     for t in g.cats where t.odd != nil {
                         twins += 1
-                        if FindFair.faceShows(t) && FindFair.shown(t) >= 0.5 - 0.001 && FindFair.blend(t, place) <= FindFair.maxBlend { twinPass += 1 }
+                        if FindFair.fair(t, place, minShow: 0.5) { twinPass += 1 }
                         else if failed == nil { failed = "L\(lv) coat \(coat.id) seed \(seed): lookalike \(t.id) (\(t.odd!))" }
                     }
                 }
             }
-            print(String(format: "L%d  your cat %d/%d fair (%.1f%%) · in the open %d · lookalikes %d/%d fair · worst blend %.2f (limit %.2f)",
-                         lv, minePass, mine, Double(minePass) * 100 / Double(max(1, mine)), open, twinPass, twins, worst, FindFair.maxBlend))
+            print(String(format: "L%d  your cat %d/%d fair (%.1f%%) · in the open %d · lookalikes %d/%d fair · least shown %.0f%%",
+                         lv, minePass, mine, Double(minePass) * 100 / Double(max(1, mine)), open, twinPass, twins, least * 100))
         }
         print(String(format: "took %.1f s", Date().timeIntervalSince(t0)))
         if let f = failed { print("FAIL — first failure: \(f)"); return 1 }
