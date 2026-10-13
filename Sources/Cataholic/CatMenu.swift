@@ -9,7 +9,7 @@ import SwiftUI
 //   1. Header — your cat, big, with its name, the eight coats as a strip of tiny cats beside it, and Zoomies.
 //   2. Do something — the 3×3 action grid, the hero of the panel.
 //   3. More cats — the herd size, one segmented row.
-//   4. Switches — five Control-Center chips (orange = on), each with a short caption.
+//   4. Switches — five Control-Center chips (accent = on), each with a short caption.
 //   5. Waiting for you | Quick launch — two cards side by side, each with its own + (no "+ Add…" rows).
 //   6. Footer — the version, Check for updates and Quit as small fixed-size buttons (the old footer overflowed).
 // Nothing in the panel changes its height while it is open (the pop-up is sized once, from fittingSize), so the lists
@@ -41,7 +41,7 @@ struct CatMenuView: View {
                 Picker("", selection: Binding(get: { CrewHerd.count }, set: { CrewHerd.set($0); tick += 1 })) {
                     ForEach(CrewHerd.sizes, id: \.self) { n in Text(n == 0 ? "None" : "\(n)").tag(n) }
                 }
-                .pickerStyle(.segmented).labelsHidden().controlSize(.small)
+                .pickerStyle(.segmented).tint(Color.catAccent).labelsHidden().controlSize(.small)
             }
             HStack(spacing: 4) {
                 Chip("Show cats", help: "Show the cats", symbol: "pawprint.fill", on: CrewPrefs.showCrew) { CrewPrefs.setShowCrew($0) }
@@ -70,7 +70,7 @@ struct CatMenuView: View {
         return HStack(alignment: .center, spacing: 10) {
             CatPicture(coat: coat, scale: 0.46)
                 .frame(width: 46, height: 52)
-                .background(Circle().fill(Color.orange.opacity(0.14)).frame(width: 54, height: 54))
+                .background(Circle().fill(Color.catAccent.opacity(0.14)).frame(width: 54, height: 54))
                 .frame(width: 54, height: 54)
             VStack(alignment: .leading, spacing: 5) {
                 HStack(alignment: .firstTextBaseline) {
@@ -103,7 +103,7 @@ struct CatMenuView: View {
                     if let n, n > 0 {
                         Text("\(n)").font(.system(size: 10, weight: .bold)).foregroundStyle(.white)
                             .padding(.horizontal, 5).frame(minWidth: 16, minHeight: 15)
-                            .background(Capsule().fill(Color.orange))
+                            .background(Capsule().fill(Color.catAccent))
                     } else {
                         Text(n == nil ? "off" : "0").font(.system(size: 10)).foregroundStyle(.tertiary)
                     }
@@ -125,7 +125,7 @@ struct CatMenuView: View {
             ForEach(Launcher.items) { i in
                 Row(key: "launch-" + i.id, title: i.name, icon: LaunchIcon(item: i),
                     help: i == fav ? "Opens on a double-click on the cat" : nil, trailing: {
-                    if i == fav { Image(systemName: "star.fill").font(.system(size: 9)).foregroundStyle(.orange) }
+                    if i == fav { Image(systemName: "star.fill").font(.system(size: 9)).foregroundStyle(Color.catAccent) }
                 }) { close(); Launcher.open(i) }
                 .contextMenu {
                     if i != fav { Button("Open on double-click") { Launcher.setFavorite(i); tick += 1 } }
@@ -185,7 +185,7 @@ private struct Tile: View {
         Button(action: action) {
             VStack(spacing: 4) {
                 Image(systemName: symbol).font(.system(size: 15)).frame(height: 18)
-                    .foregroundStyle(hover ? Color.orange : Color.primary)
+                    .foregroundStyle(hover ? Color.catAccent : Color.primary)
                 Text(title).font(.system(size: 11)).lineLimit(1).minimumScaleFactor(0.8)
             }
             .frame(maxWidth: .infinity).padding(.vertical, 8)
@@ -196,7 +196,7 @@ private struct Tile: View {
     }
 }
 
-/// One coat in the header strip: a tiny cat, ringed in orange when it is the one on your screen.
+/// One coat in the header strip: a tiny cat, ringed in the accent when it is the one on your screen.
 private struct CoatDot: View {
     let coat: CatCoat, selected: Bool, action: () -> Void
     private var key: String { "coat-" + coat.id }
@@ -208,7 +208,7 @@ private struct CoatDot: View {
                 .frame(width: 21, height: 23).clipped()
                 .frame(width: 23, height: 25)
                 .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(Color.primary.opacity(hover ? 0.12 : 0)))
-                .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).strokeBorder(Color.orange, lineWidth: selected ? 1.5 : 0))
+                .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).strokeBorder(Color.catAccent, lineWidth: selected ? 1.5 : 0))
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain).onHover { ui.hover(key, $0) }
@@ -224,9 +224,9 @@ private struct ZoomiesButton: View {
     var body: some View {
         Button(action: action) {
             Label("Zoomies!", systemImage: "hare.fill").font(.system(size: 11, weight: .semibold)).lineLimit(1).fixedSize()
-                .foregroundStyle(Color.orange)
+                .foregroundStyle(Color.catAccent)
                 .padding(.vertical, 4).padding(.horizontal, 9)
-                .background(Capsule().fill(Color.orange.opacity(hover ? 0.26 : 0.15)))
+                .background(Capsule().fill(Color.catAccent.opacity(hover ? 0.26 : 0.15)))
                 .contentShape(Capsule())
         }
         .buttonStyle(.plain).onHover { ui.hover("zoomies", $0) }
@@ -234,7 +234,7 @@ private struct ZoomiesButton: View {
     }
 }
 
-/// A switch as a Control-Center chip: an orange circle when on, a quiet one when off, a short caption beneath.
+/// A switch as a Control-Center chip: an accent circle when on, a quiet one when off, a short caption beneath.
 private struct Chip: View {
     let title: String, help: String, symbol: String, on: Bool, set: (Bool) -> Void
     @ObservedObject private var ui = CatMenuUI.shared
@@ -248,7 +248,7 @@ private struct Chip: View {
                 Image(systemName: symbol).font(.system(size: 13, weight: .medium))
                     .foregroundStyle(on ? Color.white : Color.primary.opacity(0.75))
                     .frame(width: 32, height: 32)
-                    .background(Circle().fill(on ? Color.orange : Color.primary.opacity(hover ? 0.16 : 0.08)))
+                    .background(Circle().fill(on ? Color.catAccent : Color.primary.opacity(hover ? 0.16 : 0.08)))
                 Text(title).font(.system(size: 10)).foregroundStyle(on ? .primary : .secondary).lineLimit(1).fixedSize()
             }
             .frame(maxWidth: .infinity)
@@ -284,7 +284,7 @@ private struct Card<Content: View>: View {
     }
     @ViewBuilder private var plus: some View {
         let glyph = Image(systemName: "plus").font(.system(size: 10, weight: .semibold))
-            .foregroundStyle(hover ? Color.orange : Color.secondary)
+            .foregroundStyle(hover ? Color.catAccent : Color.secondary)
             .frame(width: 20, height: 18)
             .background(Circle().fill(Color.primary.opacity(hover ? 0.10 : 0)))
             .contentShape(Rectangle())
@@ -436,4 +436,25 @@ enum CatMenuPanel {
 /// A borderless panel that can take key (so Esc and the controls work) without activating the app.
 final class KeyPanel: NSPanel {
     override var canBecomeKey: Bool { true }
+}
+
+/// The panel takes its colour from the cat you picked (owner 13 Oct 2026: "based on the cat I select can the theme
+/// change?"). One accent per coat, drawn from its fur, deep enough that a white glyph on it reads in light and dark.
+extension CatCoat {
+    var accent: Color {
+        switch id {
+        case "smokey": return Color(red: 0.42, green: 0.50, blue: 0.66)     // slate
+        case "patches": return Color(red: 0.86, green: 0.44, blue: 0.28)    // calico terracotta
+        case "tux": return Color(red: 0.28, green: 0.47, blue: 0.82)        // tuxedo blue
+        case "butter": return Color(red: 0.84, green: 0.62, blue: 0.14)     // butter gold
+        case "cocoa": return Color(red: 0.60, green: 0.39, blue: 0.25)      // cocoa
+        case "snow": return Color(red: 0.36, green: 0.66, blue: 0.86)       // ice blue
+        case "lilac": return Color(red: 0.60, green: 0.47, blue: 0.84)      // lilac
+        default: return Color(red: 0.95, green: 0.55, blue: 0.20)           // ginger orange
+        }
+    }
+}
+
+extension Color {
+    static var catAccent: Color { CatCoat.current.accent }
 }
