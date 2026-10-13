@@ -190,6 +190,7 @@ struct FindRound {
     let lookalikes: Int
     let show: ClosedRange<CGFloat>   // how much of your cat's height peeks out
     let mine: CGFloat                // your cat's scale
+    var peekers = 8                  // decoys tucked behind props, beside yours (more = your hiding spot stands out less)
     static func make(_ level: Int, _ rng: inout FindRandom) -> FindRound {
         switch level {
         // `show` never goes below the face line (FindFair): the face always shows, ~50 % of the body at 1–2, ~35 %+ after.
@@ -197,10 +198,12 @@ struct FindRound {
         case 2: return FindRound(level: 2, place: .kingdom, night: false, decoys: 32, lookalikes: 4, show: 0.52...0.62, mine: 0.58)
         case 3: return FindRound(level: 3, place: .harbour, night: false, decoys: 38, lookalikes: .random(in: 5...6, using: &rng), show: 0.5...0.58, mine: 0.52)
         case 4: return FindRound(level: 4, place: .snow, night: false, decoys: 44, lookalikes: 6, show: 0.5...0.58, mine: 0.52)
-        case 5: return FindRound(level: 5, place: .kingdom, night: true, decoys: 40, lookalikes: 6, show: 0.5...0.6, mine: 0.52)
+        // 5 and endless (owner 13 Oct 2026: "too open"): a smaller cat, more cats, every prop hides a cat or two, half the
+        // lookalikes peek over props too, and a smaller lantern. The face still always shows.
+        case 5: return FindRound(level: 5, place: .kingdom, night: true, decoys: 52, lookalikes: 8, show: 0.5...0.56, mine: 0.46, peekers: 30)
         default:
             let p = FindPlace.allCases.randomElement(using: &rng)!
-            return FindRound(level: 6, place: p, night: p == .kingdom, decoys: 42, lookalikes: 6, show: 0.5...0.58, mine: 0.52)
+            return FindRound(level: 6, place: p, night: p == .kingdom, decoys: 54, lookalikes: 8, show: 0.5...0.55, mine: 0.46, peekers: 30)
         }
     }
 }
@@ -364,7 +367,7 @@ struct FindRound {
         while made < R.lookalikes && tries < 3000 {
             tries += 1
             if odds.isEmpty { odds = FindOdd.allCases.shuffled(using: &rng) }
-            let peek = made % 3 == 2
+            let peek = R.level >= 5 ? made % 2 == 1 : made % 3 == 2
             let pick = peek ? (odds.firstIndex { $0.showsFromAbove } ?? 0) : 0
             let odd = odds[pick]
             let scale = R.mine * .random(in: 0.98...1.12, using: &rng)
@@ -382,7 +385,7 @@ struct FindRound {
         }
         // 3. Decoys peeking over the other props, then out in the open: sitting, napping, running about.
         let total = out.count + R.decoys
-        for i in hideouts.dropFirst() where out.count < made + 1 + 8 {
+        for i in hideouts.dropFirst() where out.count < made + 1 + R.peekers {
             for _ in 0..<(props[i].cover.width > 150 ? 2 : 1) {
                 guard let c = behind(i, coat: others.randomElement(using: &rng)!, scale: .random(in: 0.5...0.68, using: &rng),
                                      show: .random(in: 0.45...0.8, using: &rng)), ok(c) else { continue }
@@ -649,12 +652,12 @@ private struct FindMarks: View {
     }
 }
 
-/// Night: near-dark everywhere except a soft lantern circle (~110 pt) around the pointer.
+/// Night: near-dark everywhere except a soft lantern circle (~85 pt) around the pointer.
 private struct FindLanternLayer: View {
     @ObservedObject var lantern: FindLantern
     @ObservedObject var camera: FindCamera
     var body: some View {
-        let R = 110 / camera.z                               // ~110 pt on screen at any zoom
+        let R = 85 / camera.z                                // ~85 pt on screen at any zoom
         Canvas { ctx, sz in
             ctx.fill(Path(CGRect(origin: .zero, size: sz)),
                      with: .radialGradient(Gradient(stops: [.init(color: .clear, location: 0), .init(color: Color(red: 1, green: 0.85, blue: 0.5).opacity(0.06), location: 0.45),
@@ -800,9 +803,9 @@ private struct FindCelebration: View {
     static func run(_ n: Int) -> Int32 {
         let t0 = Date()
         var failed: String?
-        print("Find my cat fairness check — \(n) layouts × \(CatCoat.all.count) coats × 5 levels")
-        for lv in 1...5 {
-            var mine = 0, minePass = 0, open = 0, twins = 0, twinPass = 0, least = 1.0
+        print("Find my cat fairness check — \(n) layouts × \(CatCoat.all.count) coats × 5 levels + endless")
+        for lv in 1...6 {
+            var mine = 0, minePass = 0, open = 0, twins = 0, twinPass = 0, least = 1.0, hidden = 0, total = 0
             for coat in CatCoat.all {
                 for k in 0..<n {
                     let seed = UInt64(lv * 1_000_003 + k * 7_919 + 17)
@@ -813,6 +816,7 @@ private struct FindCelebration: View {
                     mine += 1
                     if ok { minePass += 1 } else if failed == nil { failed = "L\(lv) coat \(coat.id) seed \(seed): your cat (shows \(String(format: "%.2f", FindFair.shown(m))))" }
                     if m.cover == nil { open += 1 }
+                    hidden += g.cats.filter { $0.cover != nil }.count; total += g.cats.count
                     for t in g.cats where t.odd != nil {
                         twins += 1
                         if FindFair.fair(t, place, minShow: 0.5) { twinPass += 1 }
@@ -820,8 +824,8 @@ private struct FindCelebration: View {
                     }
                 }
             }
-            print(String(format: "L%d  your cat %d/%d fair (%.1f%%) · in the open %d · lookalikes %d/%d fair · least shown %.0f%%",
-                         lv, minePass, mine, Double(minePass) * 100 / Double(max(1, mine)), open, twinPass, twins, least * 100))
+            print(String(format: "L%d  your cat %d/%d fair (%.1f%%) · in the open %d · lookalikes %d/%d fair · least shown %.0f%% · ~%d cats, %d behind props",
+                         lv, minePass, mine, Double(minePass) * 100 / Double(max(1, mine)), open, twinPass, twins, least * 100, total / max(1, mine), hidden / max(1, mine)))
         }
         print(String(format: "took %.1f s", Date().timeIntervalSince(t0)))
         if let f = failed { print("FAIL — first failure: \(f)"); return 1 }
