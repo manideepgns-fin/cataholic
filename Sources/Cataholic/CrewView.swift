@@ -23,6 +23,10 @@ struct CrewView: View {
                 TimelineView(.explicit([])) { tl in
                     lifeFrame(date: tl.date)
                 }
+            } else if !clockDriven {
+                // A walk, a climb, zoomies, a fall: the mover's 30 Hz tick publishes each frame. A second 30 fps clock on
+                // top drew her up to 60 times a second, out of step (owner 13 Oct 2026: 13–20% CPU while she roamed).
+                lifeFrame(date: Date())
             } else {
                 TimelineView(.animation(minimumInterval: 1 / 30)) { tl in
                     lifeFrame(date: tl.date)
@@ -307,7 +311,11 @@ struct CrewView: View {
     /// is ONE still frame — no breathing, tail sway, blinks or eyes on the pointer — and redraws only when its state
     /// changes (the model publishes). A 30 fps life layer cost ~12% CPU and leaked memory every frame. A held nap is still too.
     private var moving: Bool {
-        (model.action != .none && !model.napStill) || model.runFacing != 0 || model.airborne || model.jumpCrouch || model.squash != 1
+        clockDriven || model.runFacing != 0 || model.airborne
+    }
+    /// The frame changes with the clock (an emote, the crouch, a landing squish) — not only when a mover publishes.
+    private var clockDriven: Bool {
+        (model.action != .none && !model.napStill) || model.jumpCrouch || model.squash != 1
     }
     private func lifeBreatheScale(_ t: Double) -> CGFloat {
         guard lifeBreathing else { return 1 }

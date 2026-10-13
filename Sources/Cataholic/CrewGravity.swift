@@ -38,15 +38,22 @@ enum CrewGravity {
         Floor(y: screen.frame.maxY - screen.visibleFrame.minY, x0: screen.frame.minX, x1: screen.frame.maxX, window: nil)
     }
 
+    /// Where she stands on a window: its top edge — or, when that edge is too high for her head to clear the menu bar
+    /// (a maximised window's top IS the menu bar's bottom), the line where her box top meets the menu bar, so she walks
+    /// along the top of the window just under the bar (owner 13 Oct 2026: on the real Mac every window was maximised,
+    /// every top was rejected, and she only ever paced the Dock line). nil: the window is too short to stand on.
+    static func ledge(_ r: CGRect, _ screen: NSScreen) -> CGFloat? {
+        let y = max(r.minY, max(screen.frame.maxY - screen.visibleFrame.maxY, CrewMove.minTop) + feet)
+        return y < r.maxY - 40 ? y : nil
+    }
+
     /// The highest floor under `x` whose surface is at or below `fromY` (y-down). A window top counts only
     /// where you can SEE it: no window in front covers the edge or the spot the cat would sit in.
     static func floorBelow(x: CGFloat, fromY: CGFloat, in screen: NSScreen,
                            wins: [(id: Int, rect: CGRect)]) -> Floor {
-        let menu = screen.frame.maxY - screen.visibleFrame.maxY
         var best = ground(screen)
         for (i, w) in wins.enumerated() {
-            let top = w.rect.minY
-            guard top >= fromY - 0.5, top < best.y, top > menu + 20,
+            guard let top = ledge(w.rect, screen), top >= fromY - 0.5, top < best.y,
                   x >= w.rect.minX + 6, x <= w.rect.maxX - 6 else { continue }
             let hidden = wins[..<i].contains { f in
                 f.rect.contains(CGPoint(x: x, y: top + 1)) || f.rect.contains(CGPoint(x: x, y: top - 6))

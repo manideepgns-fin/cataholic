@@ -35,6 +35,7 @@ enum CrewOwn {
     private static var visited = [Date](repeating: .distantPast, count: 12)
     private(set) static var recent: [(name: String, kind: Kind)] = []
     private static var sameCell = (cell: -1, n: 0)
+    private static var lowPicks = 0                      // picks in a row made from the bottom row of the screen
     static var lastZoomies = Date.distantPast
     /// Probe seams: a simulated clock, and a line per pick. Production leaves both alone.
     static var now: () -> Date = { Date() }
@@ -75,6 +76,13 @@ enum CrewOwn {
         if recent.last?.kind == .spot { opts.removeAll { $0.kind == .spot } }
         // 3 picks in one cell → she moves on
         if sameCell.n >= 3, opts.contains(where: { $0.kind == .travel }) { opts.removeAll { $0.kind != .travel } }
+        // 2 picks on the bottom row → up, whenever there is a way up (owner 13 Oct 2026: on the real Mac she paced
+        // corner to corner along the Dock line for a whole minute — patrol to the far corner kept winning the draw)
+        lowPicks = !h.hanging && c / 4 == 2 ? lowPicks + 1 : 0
+        if lowPicks >= 2 {
+            let ups = opts.filter { o in o.kind == .travel && o.to.map { cell($0, sf) / 4 < 2 } == true }
+            if !ups.isEmpty { opts = ups }
+        }
         for i in opts.indices where opts[i].kind == .travel {
             if let to = opts[i].to {
                 let since = t.timeIntervalSince(visited[cell(to, sf)])
@@ -129,19 +137,23 @@ enum CrewOwn {
                     })
                 }
             }
-            // Leap to another window's top: within ~450 pt across and 250 pt up or down, its top visible where she lands.
+            // Leap to another window's top: within ~450 pt across and 250 pt up or down, onto the nearest spot of its top
+            // you can SEE (a window half behind another is landed on where it shows — stacked real windows, 13 Oct 2026).
             // Up only from beside the window (never up through it); the arc clears the ledge (CrewPanel.lifeJump).
             var leaps: [CGPoint] = []
             for win in h.wins where win.id != fl.window {
                 let r = win.rect
-                guard r.width >= w + 12 else { continue }
-                let lx = min(max(at.x, r.minX + 6), r.maxX - w - 6), top = r.minY - feet
-                guard abs(lx - at.x) <= 450, abs(top - at.y) <= 250, hypot(lx - at.x, top - at.y) > 60,
-                      top > at.y - 20 || cx < r.minX || cx > r.maxX,
-                      lx >= sf.minX, lx + w <= sf.maxX,
-                      CrewGravity.floorBelow(x: lx + w / 2, fromY: r.minY - 0.5, in: h.screen, wins: h.wins).window == win.id
-                else { continue }
-                leaps.append(CGPoint(x: lx, y: top))
+                guard r.width >= w + 12, let ledge = CrewGravity.ledge(r, h.screen) else { continue }
+                let top = ledge - feet
+                guard abs(top - at.y) <= 250, top > at.y - 20 || cx < r.minX || cx > r.maxX else { continue }
+                var spot: CGFloat? = nil
+                for lx in stride(from: r.minX + 6, through: r.maxX - w - 6, by: 24) + [min(max(at.x, r.minX + 6), r.maxX - w - 6)]
+                where abs(lx - at.x) <= 450 && hypot(lx - at.x, top - at.y) > 60 && lx >= sf.minX && lx + w <= sf.maxX
+                    && abs(lx - at.x) < abs((spot ?? .infinity) - at.x)
+                    && CrewGravity.floorBelow(x: lx + w / 2, fromY: ledge - 0.5, in: h.screen, wins: h.wins).window == win.id {
+                    spot = lx
+                }
+                if let lx = spot { leaps.append(CGPoint(x: lx, y: top)) }
             }
             for p in leaps {
                 o.append(Option(name: "leap", kind: .travel, w: 14 * max(up, down) / Double(leaps.count), to: p) {
@@ -155,9 +167,11 @@ enum CrewOwn {
                     _ = CrewPanel.climb(at: at, floor: fl, screen: h.screen, wins: h.wins, go: true)
                 })
             }
-            // Up the screen edge to her pin — only from the Dock line.
+            // Up the screen edge — only from the Dock line: onto the top of a window flush with that edge (a maximised
+            // window has no side on screen to climb), else to her pin.
             if onDock, let p = CrewPanel.climb(at: at, floor: fl, screen: h.screen, wins: h.wins, edge: true, go: false) {
-                o.append(Option(name: "edge to pin", kind: .travel, w: 3, to: p) {
+                let pin = p.x < sf.minX || p.x + w > sf.maxX        // the pin hangs past the edge; a window landing never does
+                o.append(Option(name: pin ? "edge to pin" : "edge up", kind: .travel, w: pin ? 3 : 12 * up, to: p) {
                     _ = CrewPanel.climb(at: at, floor: fl, screen: h.screen, wins: h.wins, edge: true, go: true)
                 })
             }
@@ -168,20 +182,30 @@ enum CrewOwn {
             let endX = left ? max(r.minX, sf.minX) + 4 : min(r.maxX, sf.maxX) - w - 4
             let offX = endX + dir * 70
             if offX >= sf.minX, offX + w <= sf.maxX {
-                let land = CrewGravity.floorBelow(x: offX + w / 2, fromY: r.minY + 1, in: h.screen, wins: h.wins)
+                let land = CrewGravity.floorBelow(x: offX + w / 2, fromY: fl.y + 1, in: h.screen, wins: h.wins)
                 o.append(Option(name: "hop down", kind: .travel, w: 5 * down, to: CGPoint(x: offX, y: land.y - feet)) {
                     CrewPanel.glide(toLeft: endX, toTop: at.y, dur: 1) {
                         CrewPanel.drop(vx: dir * 140, vy: -220, through: id)
                     }
                 })
+            } else {
+                // a window as wide as the screen has no end to hop off: a hop off its front, when something lower catches her
+                let land = CrewGravity.floorBelow(x: cx, fromY: fl.y - 0.5, in: h.screen, wins: h.wins.filter { $0.id != id })
+                if land.y > fl.y + 120 {
+                    o.append(Option(name: "hop down", kind: .travel, w: 5 * down, to: CGPoint(x: at.x, y: land.y - feet)) {
+                        CrewPanel.drop(vx: dir * 60, vy: -220, through: id)
+                    })
+                }
             }
-            let gap = 12 * z, base = (left ? r.minX - gap : r.maxX + gap) - w / 2
-            if base >= sf.minX, base + w <= sf.maxX {
-                let below = CrewGravity.floorBelow(x: base + w / 2, fromY: r.minY + 1, in: h.screen, wins: h.wins)
-                let bottom = min(below.y, r.maxY)
-                if bottom - r.minY > 120 {
+            // Climb down that side — or, for a window flush with the screen edge (maximised), down the screen edge itself.
+            let gap = 12 * z, edgeWall = left ? r.minX <= sf.minX + 2 : r.maxX >= sf.maxX - 2
+            let base = edgeWall ? (left ? sf.minX + gap : sf.maxX - gap) - w / 2 : (left ? r.minX - gap : r.maxX + gap) - w / 2
+            if edgeWall || (base >= sf.minX && base + w <= sf.maxX) {
+                let below = CrewGravity.floorBelow(x: base + w / 2, fromY: fl.y + 1, in: h.screen, wins: h.wins)
+                let bottom = edgeWall ? below.y : min(below.y, r.maxY)
+                if bottom - fl.y > 120 {
                     o.append(Option(name: "climb down", kind: .travel, w: 5 * down, to: CGPoint(x: base, y: below.y - feet)) {
-                        climbDown(endX: endX, top: at.y, base: base, wallDir: -dir, to: bottom - feet - 20 * z, model: m)
+                        climbDown(endX: endX, top: at.y, base: base, wallDir: edgeWall ? dir : -dir, to: bottom - feet - 20 * z, model: m)
                     })
                 }
             }
