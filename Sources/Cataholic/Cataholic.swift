@@ -10,22 +10,8 @@ import SwiftUI
 struct CataholicApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     var body: some Scene {
-        MenuBarExtra("Cataholic", systemImage: "pawprint.fill") {
-            Button(CrewPrefs.showCrew ? "Hide the cats" : "Show the cats") { CrewPrefs.setShowCrew(!CrewPrefs.showCrew) }
-            Button(CrewPrefs.quiet ? "Wake the cats" : "Quiet mode") { CrewPrefs.setQuiet(!CrewPrefs.quiet) }
-            Menu("More cats") {
-                ForEach(CrewHerd.sizes, id: \.self) { n in Button(n == 0 ? "None" : "\(n) cats") { CrewHerd.set(n) } }
-            }
-            Menu("Cat") { ForEach(CatCoat.all, id: \.id) { c in Button(c.name) { CatCoat.set(c); CrewPanel.applyPrefs() } } }
-            Button("Zoomies!") { CrewPanel.stopLife(); CrewPanel.zoomies() }
-            WatchMenu()
-            LauncherMenu()
-            Divider()
-            Button("Check for updates…") { Updates.check() }
-            Toggle("Launch at login", isOn: Binding(get: { SMAppService.mainApp.status == .enabled },
-                                                    set: { on in try? on ? SMAppService.mainApp.register() : SMAppService.mainApp.unregister() }))
-            Button("Quit Cataholic") { NSApp.terminate(nil) }
-        }
+        MenuBarExtra("Cataholic", systemImage: "pawprint.fill") { CatMenuView() }
+            .menuBarExtraStyle(.window)
     }
 }
 
@@ -45,7 +31,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.accessory)
         _ = Updates.controller                       // Sparkle starts checking (daily, in the background)
         CrewPanel.show()
-        MainActor.assumeIsolated { Watcher.start() }
+        MainActor.assumeIsolated {
+            Watcher.start()
+            CatMenuPanel.install()
+            if WindowGuides.isOn { WindowGuides.start() }
+        }
     }
     func application(_ application: NSApplication, open urls: [URL]) {
         MainActor.assumeIsolated { urls.forEach(CataholicLinks.handle) }
@@ -131,27 +121,6 @@ struct LaunchItem: Codable, Equatable, Identifiable {
         NSApp.activate(ignoringOtherApps: true)
         guard p.runModal() == .OK else { return }
         items.append(contentsOf: p.urls.map { LaunchItem(name: $0.deletingPathExtension().lastPathComponent, target: $0.path) })
-    }
-}
-
-/// The launcher as a menu — the same items in the cat's right-click menu and the paw menu.
-struct LauncherMenu: View {
-    var body: some View {
-        let items = Launcher.items, fav = Launcher.favorite
-        Menu("Quick launch") {
-            ForEach(items) { i in Button(i == fav ? "★ \(i.name)" : i.name) { Launcher.open(i) } }
-            if !items.isEmpty { Divider() }
-            Button("Add a link…") { Launcher.addLink() }
-            Button("Add an app…") { Launcher.addApp() }
-            if items.count > 1 {
-                Menu("Double-click opens") {
-                    ForEach(items) { i in Button(i == fav ? "✓ \(i.name)" : i.name) { Launcher.setFavorite(i) } }
-                }
-            }
-            if !items.isEmpty {
-                Menu("Remove") { ForEach(items) { i in Button(i.name) { Launcher.remove(i) } } }
-            }
-        }
     }
 }
 

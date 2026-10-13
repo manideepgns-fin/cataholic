@@ -311,7 +311,7 @@ enum CrewPanel {
         let work = DispatchWorkItem {
             MainActor.assumeIsolated {
                 model?.jumpCrouch = false                 // take-off: crouch → leap
-                glide(toLeft: destL, toTop: top, dur: 0.9, hop: 60 * Double(CrewLayout.zoom)) {
+                glide(toLeft: destL, toTop: top, dur: Emote.jumpFlight, hop: 60 * Double(CrewLayout.zoom)) {
                     let d = UserDefaults.standard
                     if destL + CrewLayout.screenW > screen.frame.maxX - 28 { d.removeObject(forKey: "crewLeft") }
                     else { d.set(Double(destL - screen.frame.minX), forKey: "crewLeft") }
@@ -323,7 +323,7 @@ enum CrewPanel {
             }
         }
         jumpWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2, execute: work)
+        DispatchQueue.main.asyncAfter(deadline: .now() + Emote.jumpTakeoff, execute: work)   // the crouch, then the leap (Emote's timing)
     }
     /// Clingy: walk to the still pointer and settle next to it (no jump — the
     /// rub is in the drawing: swaying body, half-closed eyes).
@@ -649,12 +649,21 @@ struct CrewRoot: View {
             let sp = hypot(vx, vy); if sp > 3200 { vx *= 3200 / sp; vy *= 3200 / sp }
         }
         trail = []
+        // A window top right under its feet wins over the pin (owner 13 Oct 2026: put on a window near the top, it
+        // "gets attached to the top bar rather than sitting on" the window) — it hangs only with no window to stand on.
         if let screen = CrewScreen.home, let r = CrewPanel.charScreenRect(),
-           screen.frame.maxY - r.maxY < CrewGravity.hangZone, hypot(vx, vy) < 400 {
+           screen.frame.maxY - r.maxY < CrewGravity.hangZone, hypot(vx, vy) < 400,
+           !windowUnderFeet(r, screen) {
             CrewPanel.setHanging(true); CrewPanel.applyPrefs(); CrewPanel.currentModel()?.land(0.85)
             return
         }
         CrewPanel.setHanging(false)
         CrewPanel.drop(vx: vx, vy: vy)
+    }
+    /// Is there a window top within reach (≤ 60 pt) below the cat's feet? `r` is the character's screen rect.
+    private static func windowUnderFeet(_ r: CGRect, _ screen: NSScreen) -> Bool {
+        let top = screen.frame.maxY - r.maxY, feetY = top + CrewGravity.feet
+        let fl = CrewGravity.floorBelow(x: r.midX, fromY: feetY - 8, in: screen, wins: CrewGravity.windows())
+        return fl.window != nil && fl.y - feetY <= 60
     }
 }

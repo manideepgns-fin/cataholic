@@ -26,6 +26,13 @@ A chunky cat (or a hundred) that lives on your Mac.
   open "cataholic://sign?count=0"                         # put it down
   open "cataholic://zoomies"
   ```
+- **Window grid** — right-click → turn on *Grid*. Drag any window (any app, even the Raycast bar) and a square grid
+  fades in, built out from the centre of your screen and sized to its resolution. The lines take their colour from your
+  wallpaper (dark over light patches, light over dark), the window casts a faint band across the screen on all four
+  sides, and the edges of nearby windows show up as blue guides. Land an edge or the centre on a line and it glows
+  mint, and a Force Touch trackpad gives a small tap. No permission needed.
+- **One menu** — right-click the cat or click the paw: your cat and its coats up top, the emotes as a grid,
+  switches like Control Center, and *Waiting for you* / *Quick launch* side by side.
 - **Light as a feather** — at rest the cat is one still picture: ~0% CPU, ~30 MB. It only animates when it moves.
 - Naps melted flat when you're away. Quiet mode and Reduce Motion calm everything down.
 

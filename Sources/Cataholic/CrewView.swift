@@ -39,7 +39,21 @@ struct CrewView: View {
         // Zoomies face the way they run; a leap (and its crouch) faces the way it jumps.
         let facing: Double = running ? (model.runFacing < 0 ? -1 : 1) : (model.action == .jump ? model.jumpFacing : 1)
         let breatheScale = lifeBreatheScale(t)
-        let spinScale = model.action == .spin ? cos(spinDegNow(date) * .pi / 180) : 1
+        // An emote is a performance on the clock (Emote.frame): read once per frame from the timeline's date.
+        // Quiet mode / Reduce Motion / snapshots: the identity frame — the action's still pose.
+        let animating = model.action != .none && !lifeOffSchedule && !Fx.snapshot
+        let f = animating ? Emote.frame(model.action, at: date.timeIntervalSince(model.lastActionStarted)) : EmoteFrame()
+        let spinScale = model.action == .spin ? cos((Fx.snapshot ? model.spinDeg : f.spin) * .pi / 180) : 1
+        let skin: CrewSkinState
+        switch f.skin {
+        case .own: skin = skinState(pose)
+        case .rest: skin = restSkin(pose)
+        case .alert: skin = .alert
+        case .crouch, .leap: skin = .jump
+        }
+        let crouch = f.skin == .crouch ? true : (f.skin == .leap ? false : model.jumpCrouch)
+        let snapLook = Fx.snapshot && model.action == .look      // snapshots park the look mid-turn
+        let feet = UnitPoint(x: 0.5, y: 49 / 62)
         let tilt = running ? sin(model.runPhase) * 4 + model.runLean
             : swayDeg(pose, t) + clingSway(t)
         let badge = pose == .needs ? "\(model.needsCount)" : ""
@@ -59,37 +73,38 @@ struct CrewView: View {
         return ZStack(alignment: .topLeading) {
             ZStack(alignment: .topLeading) {
             ZStack(alignment: .topLeading) {
-                CrewCharacter(state: running ? .running : skinState(pose),
+                CrewCharacter(state: running ? .running : skin,
                               badge: badge,
                               colors: CrewSkinColors(),
                               blinkShut: shut,
                               breatheY: breatheYOff,
-                              zLift: z,
+                              zLift: model.action == .nap ? f.z : z,
                               runPhase: model.runPhase,
                               breathe: breatheScale,
-                              tailSway: lifeTail(t),
-                              earTwitch: lifeEar(t),
-                              pupil: lifePupil(),
-                              headTurn: lookTurn,
-                              headTilt: lookTilt,
-                              jumpCrouch: model.jumpCrouch,
+                              tailSway: animating ? f.tail : lifeTail(t),
+                              earTwitch: animating ? f.earTwitch : lifeEar(t),
+                              pupil: animating ? CGSize(width: f.pupil, height: 0) : lifePupil(),
+                              headTurn: snapLook ? 3 : f.headTurn,
+                              headTilt: snapLook ? 6 : f.headTilt,
+                              jumpCrouch: crouch,
                               bodyTilt: clingLean,
-                              pin: !ringed && CrewPanel.hanging && !model.airborne,
+                              pin: !ringed && CrewPanel.hanging && !model.airborne && f.skin != .alert,
                               happy: date < model.petUntil,
-                              stride: model.runStride)
-                    .scaleEffect(x: facing * model.bigScale, y: model.bigScale,
-                                 anchor: running ? .center : UnitPoint(x: 0.5, y: 49 / 62))   // grows up and out from the feet
+                              stride: model.runStride,
+                              pawRaise: f.paw, pawWave: f.wave, groomPaw: f.groomPaw, tongue: f.tongue,
+                              mouthOpen: f.mouth, earsBack: f.ears, eyes: f.eyes)
+                    .scaleEffect(x: facing * f.sx, y: f.sy, anchor: running ? .center : feet)   // squash & stretch (and grow big) from the feet
                     .scaleEffect(x: spinScale, y: 1)
                     // Chunky squish on landing / pet: flatter and wider from the feet, springs back.
-                    .scaleEffect(x: 1 + (1 - model.squash) * 0.6, y: model.squash, anchor: UnitPoint(x: 0.5, y: 49 / 62))
+                    .scaleEffect(x: 1 + (1 - model.squash) * 0.6, y: model.squash, anchor: feet)
+                    .rotationEffect(.degrees(f.rot * facing), anchor: feet)
                     .rotationEffect(.degrees(tilt),
                                     anchor: running ? .center : UnitPoint(x: 0.5, y: 2 / 62))
             }
             .frame(width: 46 * u, height: 62 * u)
                 .offset(x: tuck)
-                .offset(y: model.action == .jump ? CGFloat(-jumpArc()) * u : 0)
+                .offset(y: -f.lift * u)
                 .animation(Fx.reduced ? nil : .easeOut(duration: 0.35), value: out)
-                .animation(Fx.reduced ? nil : .spring(response: 0.3, dampingFraction: 0.5), value: model.bigScale)
                 .animation(Fx.reduced ? nil : .spring(response: 0.28, dampingFraction: 0.42), value: model.squash)
                 // Nothing appears on hover (owner 27 Sep 2026: "remove the emote layer when I hover"):
                 // the cat stays easy to grab; the emotes live in the right-click menu below.
@@ -107,39 +122,7 @@ struct CrewView: View {
                     .onChanged { _ in CrewMove.drag() }
                     .onEnded { _ in CrewMove.end() })
                 .help(tip)
-                // Right-click: the emotes as a normal Mac menu — the same actions the hover ring played.
-                .contextMenu {
-                    WatchMenu()
-                    LauncherMenu()
-                    Button { model.stopAction(); CrewPanel.stopLife(); CrewSound.meow(); CrewPanel.zoomies() } label: {
-                        Label("Zoomies", systemImage: "hare")
-                    }
-                    Divider()
-                    ForEach(0..<CrewModel.ringActions.count, id: \.self) { i in
-                        let (action, name, symbol) = CrewModel.ringActions[i]
-                        Button { CrewSound.forAction(action); model.ringTap(action) } label: { Label(name, systemImage: symbol) }
-                    }
-                    Divider()
-                    // The multiplier (owner 27 Sep 2026: "my screen covered with cats")
-                    Menu("More cats: \(CrewHerd.count == 0 ? "none" : "\(CrewHerd.count)")") {
-                        ForEach(CrewHerd.sizes, id: \.self) { n in
-                            Button { CrewHerd.set(n) } label: {
-                                let t = n == 0 ? "None" : "\(n) cats"
-                                if n == CrewHerd.count { Label(t, systemImage: "checkmark") } else { Text(t) }
-                            }
-                        }
-                    }
-                    // Which cat (owner 27 Sep 2026: "3 4 styles of cats … we are officially cataholic")
-                    Menu("Cat: \(CatCoat.current.name)") {
-                        ForEach(CatCoat.all, id: \.id) { c in
-                            Button { CatCoat.set(c); CrewPanel.applyPrefs(); model.pet() } label: {
-                                if c == CatCoat.current { Label(c.name, systemImage: "checkmark") } else { Text(c.name) }
-                            }
-                        }
-                    }
-                    Button(CrewSound.isOn ? "Cat sounds: On" : "Cat sounds: Off") { CrewSound.setEnabled(!CrewSound.isOn) }
-                    Button("Check for updates…") { Updates.check() }
-                }
+                // Right-click: the cat menu panel (CatMenuPanel, installed at launch).
                 // Step 3: quiet while it works — "N ✉" under the character.
                 // The three overlays draw at their CrewLayout.Overlay rects — fixed frames,
                 // the panel grows to hold exactly these (model.overlays is the shared list).
@@ -189,6 +172,8 @@ struct CrewView: View {
                             .frame(width: 34 * u, height: 26 * u)
                     }
                     .frame(width: 34 * u, height: 26 * u, alignment: .topLeading)
+                    .scaleEffect(f.bubble, anchor: UnitPoint(x: 39 / 34, y: 34.5 / 26))   // pops in from its tail
+                    .opacity(f.bubbleAlpha)
                     .offset(x: -26.5 * u, y: -20.5 * u)
                     .allowsHitTesting(false)
                 }
@@ -292,6 +277,11 @@ struct CrewView: View {
         case .nap: return .nap
         case .none: break
         }
+        return restSkin(p)
+    }
+    /// The resting drawing for the pose — what an emote settles into before it ends.
+    private func restSkin(_ p: CrewModel.Pose) -> CrewSkinState {
+        if model.airborne { return .alert }
         if p == .sleeping, CataholicIdle.seconds < 300 { return .look }   // Cataholic: awake while you're around
         switch p {
         case .needs: return .needs
@@ -359,27 +349,6 @@ struct CrewView: View {
         return CGSize(width: max(-1.5, min(1.5, dx / 200 * 1.5)),
                       height: max(-1.5, min(1.5, -dy / 200 * 1.5)))
     }
-    /// Look-around: head turns L/R over the 3 s habit — the whole head shifts
-    /// ~3 pt sideways, tilts ~6°, pupils to the same side (snapshot mid-turn).
-    private var lookTurn: CGFloat {
-        guard model.action == .look, !lifeOff else { return 0 }
-        if Fx.snapshot { return 3 }
-        return 3 * sin(Date().timeIntervalSinceReferenceDate * 2 * .pi / 3)
-    }
-    private var lookTilt: CGFloat {
-        guard model.action == .look, !lifeOff else { return 0 }
-        if Fx.snapshot { return 6 }
-        return 6 * sin(Date().timeIntervalSinceReferenceDate * 2 * .pi / 3)
-    }
-    /// Chase tail: one full turn over the action's 1 s, read from the clock each
-    /// frame. The turn is a flip — the cat's width is cos(deg) — so animating the
-    /// angle itself would tween cos(0) → cos(360) and show nothing. Snapshots read
-    /// the angle the still was parked at; Reduce Motion holds the still pose.
-    private func spinDegNow(_ date: Date) -> Double {
-        if Fx.snapshot { return model.spinDeg }
-        if Fx.reduced { return 0 }
-        return CrewModel.spinDeg(at: date.timeIntervalSince(model.lastActionStarted))
-    }
     /// Clingy: lean the whole body ~8° toward the pointer side.
     private var clingLean: CGFloat {
         guard model.action == .clingy else { return 0 }
@@ -391,13 +360,6 @@ struct CrewView: View {
     private func clingSway(_ t: Double) -> Double {
         guard model.action == .clingy, !lifeOff else { return 0 }
         return 3 * sin(t * 2 * .pi / 1.2)
-    }
-    /// Jump arc: the panel mover owns the travel; the drawing crouches then
-    /// stretches (a small vertical dip mid-flight reads as the leap). The crouch
-    /// is on the ground — only the leap lifts.
-    private func jumpArc() -> Double {
-        guard model.action == .jump, !model.jumpCrouch, !lifeOff else { return 0 }
-        return 6
     }
     // Frozen clock under reduced motion / snapshots: poses only. Snapshots
     // park mid-cycle (t=1.2) so the sleeping "z" is caught mid-drift instead

@@ -13,6 +13,9 @@ struct CrewSkinColors {
     var glyph: String = "♥"
 }
 
+/// An emote's eye override (Emote frames): open, shut, sleepy half, "^ ^" happy, or wide.
+enum CrewEyes { case open, shut, half, happy, wide }
+
 enum CrewSkinState { case needs, working, sleeping, reading, running, jump, hi, big, stretch, yawn, groom, look, clingy, alert, nap }
 
 struct CrewCharacter: View {
@@ -37,6 +40,14 @@ struct CrewCharacter: View {
     var happy = false               // petted: "^ ^" eyes + rosy cheeks
     var stride: Double = 38         // leg swing (deg) on the side-on walker: 38 = gallop, ~22 = walk
     var coatOverride: CatCoat? = nil  // snapshots draw every coat side by side; live = the picked coat
+    // Emote performances (owner 13 Oct 2026) — the defaults are the old still poses, so every other caller is unchanged.
+    var pawRaise: CGFloat = 1       // hi: the waving arm, 0 down … 1 up
+    var pawWave: Double = 0         // hi: wave angle (deg, + = out to the left)
+    var groomPaw: CGPoint? = CGPoint(x: 27.5, y: 27.5)   // groom: the licking paw (nil = down)
+    var tongue = true               // groom: tongue out
+    var mouthOpen: CGFloat = 1      // yawn: 0 shut … 1 wide
+    var earsBack: CGFloat = 0       // 0 up … 1 flattened back
+    var eyes: CrewEyes? = nil       // an emote's eye override
 
     // The cat (owner 25 Sep 2026: "and cat please") — a ginger tabby, original drawing.
     // The coat (owner 27 Sep 2026: "3 4 styles of cats … we are officially cataholic"): the soft, lazy flat-vector
@@ -211,7 +222,7 @@ struct CrewCharacter: View {
                 // Alert: taller, forward ears (drawn INSTEAD of the base pair, not over it).
                 // Crouch: ears flattened back. Look: the whole head group (ears + face)
                 // shifts ~3 pt and tilts ~6° via headT below.
-                let hdx = (state == .look || state == .clingy) ? headTurn : 0
+                let hdx = headTurn
                 if state == .alert {
                     var alL = Path(); alL.move(to: P(11 + hdx, 17)); alL.addLine(to: P(12.5 + hdx, 3.5)); alL.addLine(to: P(19.5 + hdx, 10.5)); alL.closeSubpath()
                     var alR = Path(); alR.move(to: P(35 + hdx, 17)); alR.addLine(to: P(33.5 + hdx, 3.5)); alR.addLine(to: P(26.5 + hdx, 10.5)); alR.closeSubpath()
@@ -225,16 +236,17 @@ struct CrewCharacter: View {
                     F(&ctx, flL, fur, s); F(&ctx, flR, fur, s)
                 } else {
                     // Rounded, wide-set ears (a chunky head wears small soft ears).
-                    var earL = Path(); earL.move(to: P(9 + hdx, 19)); earL.addQuadCurve(to: P(12 + hdx - earTwitch * 2.2, 7.5 - earTwitch * 1.6), control: P(8.5 + hdx, 11)); earL.addQuadCurve(to: P(20 + hdx, 12.5), control: P(15.5 + hdx, 8)); earL.closeSubpath()
-                    var earR = Path(); earR.move(to: P(37 + hdx, 19)); earR.addQuadCurve(to: P(34 + hdx, 7.5), control: P(37.5 + hdx, 11)); earR.addQuadCurve(to: P(26 + hdx, 12.5), control: P(30.5 + hdx, 8)); earR.closeSubpath()
+                    let eb = earsBack   // flattening slides each tip out and down
+                    var earL = Path(); earL.move(to: P(9 + hdx, 19)); earL.addQuadCurve(to: P(12 + hdx - earTwitch * 2.2 - 5.5 * eb, 7.5 - earTwitch * 1.6 + 5 * eb), control: P(8.5 + hdx, 11)); earL.addQuadCurve(to: P(20 + hdx, 12.5), control: P(15.5 + hdx, 8 + 2 * eb)); earL.closeSubpath()
+                    var earR = Path(); earR.move(to: P(37 + hdx, 19)); earR.addQuadCurve(to: P(34 + hdx + 5.5 * eb, 7.5 + 5 * eb), control: P(37.5 + hdx, 11)); earR.addQuadCurve(to: P(26 + hdx, 12.5), control: P(30.5 + hdx, 8 + 2 * eb)); earR.closeSubpath()
                     F(&ctx, earL, coat.earL ?? fur, s); F(&ctx, earR, coat.earR ?? fur, s)
-                    var inL = Path(); inL.move(to: P(11.5 + hdx, 16)); inL.addLine(to: P(12.8 + hdx - earTwitch * 1.6, 10.5 - earTwitch * 1.2)); inL.addLine(to: P(17.5 + hdx, 13)); inL.closeSubpath()
-                    var inR = Path(); inR.move(to: P(34.5 + hdx, 16)); inR.addLine(to: P(33.2 + hdx, 10.5)); inR.addLine(to: P(28.5 + hdx, 13)); inR.closeSubpath()
+                    var inL = Path(); inL.move(to: P(11.5 + hdx, 16)); inL.addLine(to: P(12.8 + hdx - earTwitch * 1.6 - 3.5 * eb, 10.5 - earTwitch * 1.2 + 3 * eb)); inL.addLine(to: P(17.5 + hdx, 13)); inL.closeSubpath()
+                    var inR = Path(); inR.move(to: P(34.5 + hdx, 16)); inR.addLine(to: P(33.2 + hdx + 3.5 * eb, 10.5 + 3 * eb)); inR.addLine(to: P(28.5 + hdx, 13)); inR.closeSubpath()
                     ctx.fill(inL, with: .color(pink)); ctx.fill(inR, with: .color(pink))
                 }
                 // Head group: shift ~3 pt sideways and tilt ~6° for look / clingy.
                 ctx.translateBy(x: P(23 + hdx, 21).x, y: P(23 + hdx, 21).y)
-                if state == .look || state == .clingy { ctx.rotate(by: .degrees(headTilt)) }
+                if headTilt != 0 { ctx.rotate(by: .degrees(headTilt)) }
                 ctx.translateBy(x: -P(23, 21).x, y: -P(23, 21).y)
                 let hx: CGFloat = hdx
                 // Head, forehead stripes, muzzle
@@ -249,8 +261,8 @@ struct CrewCharacter: View {
                 // Collar + gold tag carrying the agent's glyph (on the BODY — outside the head-group tilt)
                 var nose = Path(); nose.move(to: P(21.8 + hx, 23)); nose.addLine(to: P(24.2 + hx, 23)); nose.addLine(to: P(23 + hx, 24.5)); nose.closeSubpath()
                 ctx.fill(nose, with: .color(pink))
-                if state == .yawn { yawnMouth(ctx: &ctx, P: P, s: s, dx: hx) }
-                else if state == .groom {
+                if state == .yawn && mouthOpen > 0.08 { yawnMouth(ctx: &ctx, P: P, s: s, dx: hx, open: mouthOpen) }
+                else if state == .groom && tongue {
                     // tongue peeks out mid-lick
                     ctx.fill(oval(22.1 + hx, 25.2, 1.8, 2.6), with: .color(pink))
                 } else {
@@ -267,7 +279,15 @@ struct CrewCharacter: View {
                 ctx.stroke(wh, with: .color(eye.opacity(0.45)), lineWidth: 0.6 * s)
                 ctx.fill(oval(11.5 + hx, 22.4, 4.4, 2.4), with: .color(pink.opacity(happy ? 0.85 : 0.5)))
                 ctx.fill(oval(30.1 + hx, 22.4, 4.4, 2.4), with: .color(pink.opacity(happy ? 0.85 : 0.5)))
-                if happy { happyEyes(ctx: &ctx, P: P, s: s, dx: hx) } else {
+                if let e = eyes {
+                    switch e {
+                    case .open: openEyes(ctx: &ctx, P: P, s: s, pupil: pupil, half: false, dx: hx + pupil.width * 0.4)
+                    case .half: openEyes(ctx: &ctx, P: P, s: s, pupil: .zero, half: true, dx: hx)
+                    case .shut: shutEyes(ctx: &ctx, P: P, s: s, dx: hx)
+                    case .happy: happyEyes(ctx: &ctx, P: P, s: s, dx: hx)
+                    case .wide: openEyes(ctx: &ctx, P: P, s: s, pupil: .zero, half: false, dx: hx, wide: true)
+                    }
+                } else if happy { happyEyes(ctx: &ctx, P: P, s: s, dx: hx) } else {
                 switch state {
                 case .working, .reading:   // at work over the letter: content "^ ^" eyes (owner's style pick, 27 Sep 2026)
                     happyEyes(ctx: &ctx, P: P, s: s, dx: hx)
@@ -290,10 +310,10 @@ struct CrewCharacter: View {
                     openEyes(ctx: &ctx, P: P, s: s, pupil: .zero, half: false, dx: 0, only: .right)
                 }
                 }
-                if coat.glasses && state != .sleeping && state != .nap && state != .yawn { glasses(ctx: &ctx, P: P, s: s, dx: hx) }
+                if coat.glasses && state != .sleeping && state != .nap { glasses(ctx: &ctx, P: P, s: s, dx: hx) }
                 // Head-group transform ends here — paws, letter, sign stay on the body.
                 ctx.translateBy(x: P(23, 21).x, y: P(23, 21).y)
-                if state == .look || state == .clingy { ctx.rotate(by: .degrees(-headTilt)) }
+                if headTilt != 0 { ctx.rotate(by: .degrees(-headTilt)) }
                 ctx.translateBy(x: -P(23 + hdx, 21).x, y: -P(23 + hdx, 21).y)
                 // Collar + gold tag carrying the agent's glyph (on the body, unturned)
                 ctx.fill(Path(roundedRect: CGRect(x: 14 * s, y: 30.2 * s, width: 18 * s, height: 2.8 * s),
@@ -311,12 +331,17 @@ struct CrewCharacter: View {
                     F(&ctx, oval(11.5, 38, 6.5, 5), fur, s)      // chubby paws on the letter
                     F(&ctx, oval(28, 38, 6.5, 5), fur, s)
                 }
-                if state == .hi {
-                    // wave: the paw lifts high
+                if state == .hi && pawRaise > 0.12 {
+                    // wave: the arm swings up from the side (pawRaise) and waves (pawWave); at 1 / 0 it is the old raised paw
+                    let r = min(pawRaise, 1.2)       // tucked short at the side → full reach overhead (a little past at the top)
+                    let th = (110 + (31 - 110) * Double(r) + pawWave) * .pi / 180     // from straight up, + = out to the left
+                    let dx = CGFloat(-sin(th)), dy = CGFloat(-cos(th)), L: CGFloat = 16.4 * (0.35 + 0.65 * min(r, 1))
+                    let end = CGPoint(x: 17 + dx * L, y: 36 + dy * L)
+                    let elbow = CGPoint(x: 17 + dx * L / 2 - CGFloat(cos(th)) * 2.1, y: 36 + dy * L / 2 + CGFloat(sin(th)) * 2.1)
                     var paw = Path()
-                    paw.move(to: P(17, 36)); paw.addQuadCurve(to: P(8.5, 22), control: P(11, 30))
+                    paw.move(to: P(17, 36)); paw.addQuadCurve(to: P(end.x, end.y), control: P(elbow.x, elbow.y))
                     T(&ctx, paw, 3, fur, s)
-                    F(&ctx, oval(6.6, 18.5, 4.4, 3.6), cream, s)
+                    F(&ctx, oval(end.x + dx * 1.7 - 2.2, end.y + dy * 1.7 - 1.8, 4.4, 3.6), cream, s)
                 }
                 if state == .needs {
                     // A paw holds the sign up on the LEFT (the side facing into the screen)
@@ -335,16 +360,24 @@ struct CrewCharacter: View {
                         ctx.draw(t, at: CGPoint(x: 7 * s, y: 23 * s), anchor: .center)
                     }
                 }
-                if state == .groom {
-                    // a paw lifted to the mouth for the mid-lick
+                if state == .groom, let g = groomPaw, hypot(g.x - 29, g.y - 36) > 2 {
+                    // a paw lifted to the mouth for the mid-lick (at the default point it is the old still)
                     var paw = Path()
-                    paw.move(to: P(29, 36)); paw.addQuadCurve(to: P(27.5, 27.5), control: P(29.5, 32))
+                    paw.move(to: P(29, 36)); paw.addQuadCurve(to: P(g.x, g.y), control: P((29 + g.x) / 2 + 1.25, (36 + g.y) / 2))
                     T(&ctx, paw, 3, fur, s)
-                    F(&ctx, oval(25.4, 24.4, 4.2, 3.4), cream, s)
+                    F(&ctx, oval(g.x - 2.1, g.y - 3.1, 4.2, 3.4), cream, s)
                 }
             }
             .frame(width: 46 * CrewLayout.zoom, height: 62 * CrewLayout.zoom)
             .offset(y: breatheY)
+            if state == .nap && zLift.1 > 0 {
+                // the nap's z drifts up off the head: the melted head (bottom left) or the dozing head on the pin
+                let (zx, zy): (CGFloat, CGFloat) = pin ? (34 + zLift.0 * 0.5, 12 - zLift.0) : (17 + zLift.0 * 0.5, 27 - zLift.0)
+                Text("z")
+                    .font(.system(size: 10 * CrewLayout.zoom, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(Color(nsColor: .secondaryLabelColor).opacity(zLift.1))
+                    .offset(x: zx * CrewLayout.zoom, y: zy * CrewLayout.zoom)
+            }
             if state == .sleeping {
                 Text("z")
                     .font(.system(size: 10 * CrewLayout.zoom, weight: .semibold, design: .monospaced))
@@ -465,9 +498,10 @@ struct CrewCharacter: View {
         e.move(to: P(26 + dx, 19.8)); e.addQuadCurve(to: P(31 + dx, 19.8), control: P(28.5 + dx, 16.4))
         ctx.stroke(e, with: .color(eye), style: StrokeStyle(lineWidth: 1.4 * s, lineCap: .round))
     }
-    private func yawnMouth(ctx: inout GraphicsContext, P: (CGFloat, CGFloat) -> CGPoint, s: CGFloat, dx: CGFloat = 0) {
-        ctx.fill(Path(ellipseIn: CGRect(x: (20.4 + dx) * s, y: 24.5 * s, width: 5.2 * s, height: 6.5 * s)), with: .color(Color(red: 0.35, green: 0.16, blue: 0.18)))
-        ctx.fill(Path(ellipseIn: CGRect(x: (21.6 + dx) * s, y: 28 * s, width: 2.8 * s, height: 2 * s)), with: .color(pink))
+    private func yawnMouth(ctx: inout GraphicsContext, P: (CGFloat, CGFloat) -> CGPoint, s: CGFloat, dx: CGFloat = 0, open m: CGFloat = 1) {
+        let w = 5.2 * (0.55 + 0.45 * m), h = 6.5 * m        // at 1 it is the old wide-open mouth
+        ctx.fill(Path(ellipseIn: CGRect(x: (23 - w / 2 + dx) * s, y: 24.5 * s, width: w * s, height: h * s)), with: .color(Color(red: 0.35, green: 0.16, blue: 0.18)))
+        ctx.fill(Path(ellipseIn: CGRect(x: (23 - 1.4 * m + dx) * s, y: (24.5 + h - 3 * m) * s, width: 2.8 * m * s, height: 2 * m * s)), with: .color(pink))
     }
     /// The classic stretch, SIDE-ON (facing right, like the leap): forelegs flat
     /// forward on the ground, chest low, head lowered between them, rear end
@@ -479,7 +513,7 @@ struct CrewCharacter: View {
             if w >= 2 { T(&ctx, p, w, c, s) } else { ctx.stroke(p, with: .color(c), style: StrokeStyle(lineWidth: w * s, lineCap: .round)) }
         }
         // Tail straight up from the raised rump
-        var tail = Path(); tail.move(to: P(9, 32)); tail.addQuadCurve(to: P(4.5, 11), control: P(3.5, 24))
+        var tail = Path(); tail.move(to: P(9, 32)); tail.addQuadCurve(to: P(4.5 + tailSway, 11), control: P(3.5 + tailSway * 0.5, 24))
         T(&ctx, tail, 3.2, fur, s)
         // Far legs (shaded) first
         line(14.5, 37, 14, 47.4, 3.2, shade)

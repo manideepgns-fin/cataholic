@@ -176,28 +176,3 @@ final class NotifyDelegate: NSObject, UNUserNotificationCenterDelegate {
         }
     }
 }
-
-/// "Waiting for you" — in the cat's right-click menu and the paw menu.
-struct WatchMenu: View {
-    var body: some View {
-        let ws = Watcher.watches, total = Watcher.total
-        Menu(total > 0 ? "Waiting for you: \(total)" : "Waiting for you") {
-            ForEach(ws) { w in
-                Button {
-                    Watcher.open(w)
-                } label: {
-                    switch Watcher.counts[w.id] {
-                    case .none: Text("\(w.name) — open it in Chrome")
-                    case .some(0): Text("\(w.name) — nothing waiting")
-                    case .some(let n): Text("\(w.name) — \(n)")
-                    }
-                }
-            }
-            if !ws.isEmpty { Divider() }
-            Button("Watch a link…") { Watcher.add() }
-            if !ws.isEmpty {
-                Menu("Stop watching") { ForEach(ws) { w in Button(w.name) { Watcher.remove(w) } } }
-            }
-        }
-    }
-}

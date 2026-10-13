@@ -169,7 +169,6 @@ final class CrewModel: ObservableObject {
     @Published var action: Action = .none       // the behaviour in progress
     @Published var ringOpen = false             // hover ring of emote buttons around the cat
     @Published var hiBubble: String? = nil      // "hi" bubble (1.5 s), separate from the whisper
-    @Published var bigScale: Double = 1         // grow-big ~1.8× puff
     @Published var jumpLift: Double = 0         // jump arc height (pt)
     @Published var jumpCrouch = false           // the 0.2 s take-off crouch, before the leap
     @Published var jumpFacing: Double = 1       // 1 = leaps right · -1 = leaps left (the drawing is mirrored)
@@ -198,7 +197,6 @@ final class CrewModel: ObservableObject {
         action = .none
         ringOpen = false
         hiBubble = nil
-        bigScale = 1
         jumpLift = 0
         jumpCrouch = false
         jumpFacing = 1
@@ -288,34 +286,28 @@ final class CrewModel: ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + end, execute: w)
     }
 
+    // The nine emotes are performances on the clock (Emote, below): CrewView reads `Emote.frame(action, elapsed)`
+    // every frame, so these only start the side effects and return how long the performance runs.
     private func playHi(still: Bool) -> Double {
         lastHiAt = Date()
         hiBubble = "hi"
-        return 2.0
+        return Emote.duration(.hi)
     }
-    private func playBig(still: Bool) -> Double {
-        if !still { bigScale = 1.8 }
-        return 1.8
-    }
-    private func playStretch(still: Bool) -> Double { 1.5 }
-    private func playYawn(still: Bool) -> Double { 1.0 }
-    private func playGroom(still: Bool) -> Double { 2.0 }
-    /// Chase tail: one full turn over `spinDuration`. CrewView turns the cat from the
-    /// clock through `spinDeg(at:)` (the flip is cos(deg), so an animated `spinDeg`
-    /// would tween cos(0) → cos(360) = no motion).
-    static let spinDuration = 1.0
-    static func spinDeg(at elapsed: Double) -> Double { min(max(elapsed / spinDuration, 0), 1) * 360 }
-    private func playSpin(still: Bool) -> Double { Self.spinDuration }
-    private func playLook(still: Bool) -> Double { 3.0 }
+    private func playBig(still: Bool) -> Double { Emote.duration(.big) }
+    private func playStretch(still: Bool) -> Double { Emote.duration(.stretch) }
+    private func playYawn(still: Bool) -> Double { Emote.duration(.yawn) }
+    private func playGroom(still: Bool) -> Double { Emote.duration(.groom) }
+    private func playSpin(still: Bool) -> Double { Emote.duration(.spin) }
+    private func playLook(still: Bool) -> Double { Emote.duration(.look) }
     private func playJump(still: Bool) -> Double {
         if !still {
-            jumpCrouch = true        // lifeJump clears it after 0.2 s, when the leap starts
+            jumpCrouch = true        // lifeJump clears it at Emote.jumpTakeoff, when the leap starts
             CrewPanel.lifeJump()
         }
-        return 1.6
+        return Emote.duration(.jump)
     }
     private func playClingy(still: Bool) -> Double { 2.0 }
-    private func playNap(still: Bool) -> Double { 4.0 }
+    private func playNap(still: Bool) -> Double { Emote.duration(.nap) }
 
     // MARK: — hover ring dwell (owner, 26 Sep 2026)
 
@@ -368,28 +360,14 @@ final class CrewModel: ObservableObject {
     }
 
     private func endAction() {
-        let wasBig = action == .big
         actionWork = nil
         hiBubble = nil
-        bigScale = 1
         jumpLift = 0
         jumpCrouch = false
         jumpFacing = 1
         spinDeg = 0
-        if wasBig {
-            // The spring-back needs its room: keep the pose (and the panel) until it settles.
-            let w = DispatchWorkItem { [weak self] in
-                Task { @MainActor in
-                    self?.action = .none
-                    CrewPanel.refit()
-                }
-            }
-            actionWork = w
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6, execute: w)
-        } else {
-            action = .none
-            CrewPanel.refit()
-        }
+        action = .none          // every performance has already settled back to the resting pose by now
+        CrewPanel.refit()
     }
 
     /// Once-a-second watch: welcome-back hi + clingy proximity. No work when
@@ -464,5 +442,242 @@ enum CrewPrefs {
         UserDefaults.standard.set(on, forKey: "crewQuiet")
         CrewPanel.applyPrefs()
         CrewHerd.shared.restart()                  // quiet mode sends the herd home
+    }
+}
+
+// MARK: — emotes as little performances (owner 13 Oct 2026: "redesign how emotes work, like the movements can we
+// little more animated")
+//
+// Each of the nine actions is a short piece of cartoon timing on the clock — anticipation → action → follow-through →
+// settle — instead of a held pose. `Emote.frame(action, at: elapsed)` is a pure function: CrewView calls it on every
+// frame of the TimelineView that already runs while an action plays (an idle cat still draws one still frame), and the
+// probe calls it at fixed times to draw frame strips. Every performance ends on the resting skin with every channel at
+// rest, so the end of an action is not a pop. Quiet mode / Reduce Motion / snapshots get `EmoteFrame()` — today's
+// still pose. Calm: no wobble faster than ~3 Hz, every shake dies out. All motion stays inside the panel CrewLayout
+// already sizes for that action (the 46×62 box + its margin, the grow-big envelope, the hi bubble).
+
+/// One frame of an emote: what CrewView applies to the cat this instant. The defaults are today's still pose.
+struct EmoteFrame {
+    enum Skin { case own, rest, alert, crouch, leap }
+    var skin: Skin = .own                       // own = the action's drawing · rest = the resting cat · the jump's two drawings
+    var sx: CGFloat = 1, sy: CGFloat = 1        // squash & stretch about the feet
+    var rot: Double = 0                         // lean about the feet (deg, + = clockwise; mirrored with the jump)
+    var lift: CGFloat = 0                       // up off the ground (1× pt)
+    var spin: Double = 0                        // chase tail: the turn (deg) — the cat's width is cos(spin)
+    var headTurn: CGFloat = 0, headTilt: CGFloat = 0
+    var pupil: CGFloat = 0                      // eyes to the side (pt)
+    var paw: CGFloat = 1, wave: Double = 0      // hi: arm raise (0 down … 1 up), wave (deg)
+    var groomPaw: CGPoint? = CGPoint(x: 27.5, y: 27.5)   // groom: the licking paw (nil = down)
+    var tongue = true                           // groom: tongue out
+    var mouth: CGFloat = 1                      // yawn: 0 shut … 1 wide
+    var ears: CGFloat = 0                       // 0 up … 1 flattened back
+    var earTwitch: Double = 0
+    var tail: CGFloat = 0                       // tail sway (pt)
+    var eyes: CrewEyes? = nil
+    var bubble: CGFloat = 1, bubbleAlpha: Double = 1     // the "hi" bubble pops in and fades
+    var z: (CGFloat, Double) = (0, 0)           // nap: the drifting z (rise, opacity)
+}
+
+enum Emote {
+    /// The jump's crouch, then its flight — CrewPanel.lifeJump starts the travel at `jumpTakeoff` and glides `jumpFlight`.
+    static let jumpTakeoff = 0.35
+    static let jumpFlight = 0.9
+
+    static func duration(_ a: CrewModel.Action) -> Double {
+        switch a {
+        case .hi: return 2.0
+        case .big: return 2.3
+        case .stretch: return 2.4
+        case .yawn: return 1.9
+        case .groom: return 2.5
+        case .spin: return 2.2
+        case .look: return 2.6
+        case .jump: return jumpTakeoff + jumpFlight + 0.5
+        case .nap: return 3.4
+        case .clingy: return 2.0
+        case .none: return 0
+        }
+    }
+
+    // Timing curves. u runs 0 → 1 across a segment.
+    private static func seg(_ t: Double, _ a: Double, _ b: Double) -> Double { min(max((t - a) / (b - a), 0), 1) }
+    private static func smooth(_ u: Double) -> Double { u * u * (3 - 2 * u) }
+    private static func easeIn(_ u: Double) -> Double { u * u * u }
+    private static func easeInOut(_ u: Double) -> Double { u < 0.5 ? 4 * u * u * u : 1 - pow(-2 * u + 2, 3) / 2 }
+    /// Overshoots a little and lands on 1 (k = how far past).
+    private static func back(_ u: Double, _ k: Double = 1.7) -> Double { let v = u - 1; return 1 + v * v * ((k + 1) * v + k) }
+    /// 0 → 1 → 0.
+    private static func bump(_ u: Double) -> Double { sin(min(max(u, 0), 1) * .pi) }
+    /// A settle that starts at 1, rings `cycles` times and is exactly 0 at u = 1 (only inside its segment).
+    private static func ring(_ u: Double, _ cycles: Double, _ decay: Double = 3.5) -> Double {
+        u >= 1 ? 0 : cos(u * cycles * 2 * .pi) * exp(-decay * u) * (1 - u)
+    }
+    /// A shake that starts and ends at 0 and dies away.
+    private static func wob(_ u: Double, _ cycles: Double, _ decay: Double = 3) -> Double {
+        u <= 0 || u >= 1 ? 0 : sin(u * cycles * 2 * .pi) * exp(-decay * u) * (1 - u)
+    }
+    private static func mix(_ a: CGPoint, _ b: CGPoint, _ k: Double) -> CGPoint {
+        CGPoint(x: a.x + (b.x - a.x) * CGFloat(k), y: a.y + (b.y - a.y) * CGFloat(k))
+    }
+
+    static func frame(_ a: CrewModel.Action, at t: Double) -> EmoteFrame {
+        var f = EmoteFrame()
+        guard t < duration(a) else { f.skin = .rest; return f }
+        switch a {
+        case .hi:
+            // dip → the paw shoots up (overshoot) → 2½ waves, body and head swaying a beat behind → paw drops → settle
+            let dip = bump(seg(t, 0, 0.2)) * 0.06
+            let down = smooth(seg(t, 1.4, 1.7))
+            f.paw = CGFloat(back(seg(t, 0.12, 0.42), 1.4) * (1 - down))
+            let w = seg(t, 0.38, 1.4), env = min(1, w * 5) * min(1, (1 - w) * 5), ph = w * 2.5 * 2 * .pi
+            f.wave = sin(ph) * 22 * env
+            let reach = bump(seg(t, 0.15, 0.5)) * 0.05, settle = wob(seg(t, 1.62, 2.0), 1.5)
+            f.sy = CGFloat(1 - dip + reach - settle * 0.05)
+            f.sx = CGFloat(1 + dip * 0.7 - reach * 0.5 + settle * 0.035)
+            f.rot = sin(ph - 0.7) * 2.2 * env
+            f.headTilt = CGFloat(-4 * Double(f.paw) * (1 - down) - sin(ph - 0.35) * 3 * env)
+            f.earTwitch = bump(seg(t, 0.42, 0.62))
+            f.tail = CGFloat(sin(t * 2 * .pi * 1.1) * 2.4 * (1 - smooth(seg(t, 1.5, 1.95))))
+            if t > 0.75 && t < 1.15 { f.eyes = .happy }
+            let pop = seg(t, 0.18, 0.45)
+            f.bubble = CGFloat(0.4 + 0.6 * back(pop, 2.0))
+            f.bubbleAlpha = min(1, pop * 4) * (1 - smooth(seg(t, 1.6, 1.9)))
+            if t > 1.7 { f.skin = .rest }
+        case .big:
+            // crouch, ears flat → PUFF (fur up, eyes wide, overshoot) → a held shiver → deflate → squash, shake it off
+            let c = smooth(seg(t, 0, 0.28)) * (1 - smooth(seg(t, 0.28, 0.42)))
+            let p = seg(t, 0.28, 0.58), d = seg(t, 1.4, 1.78)
+            let S = 1 + 0.8 * back(p, 1.6) - 0.86 * easeIn(d)
+            f.sx = CGFloat(S + 0.1 * easeIn(d) + c * 0.1)
+            f.sy = CGFloat(S - c * 0.14)
+            f.ears = CGFloat(c)
+            f.rot = sin((t - 0.58) * 2 * .pi * 2.5) * 1.0 * bump(seg(t, 0.58, 1.4)) + wob(seg(t, 1.85, 2.3), 2) * 3
+            f.tail = CGFloat(sin(t * 2 * .pi * 1.4) * 1.5 * bump(seg(t, 0.5, 1.5)))
+            if t >= 1.78 {
+                let r = ring(seg(t, 1.78, 2.3), 1.2)
+                f.sx = CGFloat(1 + 0.04 * r); f.sy = CGFloat(1 - 0.06 * r)
+            }
+            if t >= 0.3 && t < 1.62 { f.skin = .alert } else if t >= 1.62 { f.skin = .rest }
+        case .stretch:
+            // lean back → down into the bow, front paws reaching (overshoot), tail waving → gather up → sit, shake it off
+            if t < 0.3 {
+                let k = smooth(seg(t, 0, 0.3))
+                f.skin = .rest; f.rot = -3 * k; f.sx = CGFloat(1 + 0.03 * k); f.sy = CGFloat(1 - 0.04 * k); f.eyes = .shut
+            } else if t < 1.75 {
+                let k = seg(t, 0.3, 0.65), g = smooth(seg(t, 1.5, 1.75)), hold = bump(seg(t, 0.65, 1.5))
+                f.sx = CGFloat(0.84 + 0.22 * back(k, 1.5) + 0.035 * sin((t - 0.65) * 2 * .pi * 1.2) * hold - 0.12 * g)   // two slow luxurious pushes
+                f.sy = CGFloat(1.05 - 0.07 * smooth(k) + 0.04 * g - 0.02 * hold)
+                f.rot = -2.5 * hold
+                f.tail = CGFloat(sin((t - 0.3) * 2 * .pi * 0.8) * 2.5)
+            } else {
+                let u = seg(t, 1.75, 2.4), r = ring(u, 1.0)
+                f.skin = .rest; f.rot = wob(u, 2.5, 2.5) * 4.5; f.sy = CGFloat(1 - 0.05 * max(r, 0)); f.sx = CGFloat(1 + 0.04 * r)   // never taller: the pin sits at the panel's top edge
+                if t < 2.15 { f.eyes = .happy }
+            }
+        case .yawn:
+            // a small dip, eyes squeeze → the mouth opens wide as it stretches tall, ears back → hold → snap shut → sleepy blink
+            let open = smooth(seg(t, 0.2, 0.7)) * (1 - easeIn(seg(t, 1.05, 1.3)))
+            f.mouth = CGFloat(open * (1 + 0.05 * sin((t - 0.7) * 2 * .pi * 2) * bump(seg(t, 0.7, 1.05))))
+            let dip = bump(seg(t, 0, 0.25)) * 0.03, settle = wob(seg(t, 1.25, 1.9), 1.5)
+            f.sy = CGFloat(1 - dip + 0.06 * open - settle * 0.04)
+            f.sx = CGFloat(1 + dip * 0.6 - 0.03 * open + settle * 0.03)
+            f.headTilt = CGFloat(-4 * open)
+            f.ears = CGFloat(0.6 * open)
+            f.eyes = .shut
+            if t >= 1.3 { f.skin = .rest; f.eyes = t < 1.62 ? .half : (t < 1.7 ? .shut : nil) }
+        case .groom:
+            // the paw comes up to the mouth → three licks, head bobbing into each → a wipe over the brow to the ear → paw down
+            let rest = CGPoint(x: 29.5, y: 36.5), mouthAt = CGPoint(x: 27.5, y: 27.5), ear = CGPoint(x: 31, y: 15)
+            let up = back(seg(t, 0.05, 0.35), 1.3), down = smooth(seg(t, 1.95, 2.2))
+            var p = mix(rest, mouthAt, up)
+            let licking = t > 0.35 && t < 1.5
+            let lk = seg(t, 0.35, 1.5) * 3, fr = lk - floor(lk), lick = licking ? bump(fr) : 0
+            p.y -= CGFloat(2.4 * lick); p.x += CGFloat(0.6 * lick)
+            let w = seg(t, 1.5, 1.95), wb = bump(w)
+            if w > 0 { p = mix(mouthAt, ear, smooth(wb)); p.x += CGFloat(2 * wb) }
+            p = mix(p, rest, down)
+            f.groomPaw = t < 2.2 ? p : nil
+            f.tongue = licking && fr > 0.15 && fr < 0.75
+            f.headTilt = CGFloat(5 * up * (1 - down) + 2.5 * lick + 6 * wb)
+            f.eyes = t > 0.3 && t < 1.95 ? .shut : (t >= 1.95 ? .open : nil)
+            f.earTwitch = 0
+            f.tail = CGFloat(sin(t * 2 * .pi * 0.7) * 1.8 * (1 - smooth(seg(t, 2.0, 2.45))))
+            if t >= 2.2 {
+                let u = seg(t, 2.2, 2.5)
+                f.skin = .rest; f.eyes = nil
+                f.sy = CGFloat(1 - wob(u, 1.5) * 0.035); f.sx = CGFloat(1 + wob(u, 1.5) * 0.03); f.rot = wob(u, 1.5) * 2
+            }
+        case .spin:
+            // spots the tail (head + eyes turn, tail flicks), crouches → two turns that speed up and slow down, a hop
+            // in the middle → lands with a squash, dizzy wobble
+            let c = smooth(seg(t, 0, 0.4)) * (1 - smooth(seg(t, 0.4, 0.55)))
+            let notice = smooth(seg(t, 0, 0.3)) * (1 - smooth(seg(t, 0.4, 0.6)))
+            f.skin = .rest
+            f.headTurn = CGFloat(3 * notice); f.pupil = CGFloat(1.5 * notice)
+            f.tail = CGFloat(sin(t * 2 * .pi * 2.2) * 3.2 * notice)
+            let u = seg(t, 0.4, 1.6)
+            f.spin = 720 * easeInOut(u)
+            f.lift = CGFloat(4 * bump(u))
+            f.rot = 4 * bump(u)
+            f.sy = CGFloat(1 - 0.08 * c + 0.03 * bump(u)); f.sx = CGFloat(1 + 0.05 * c)
+            if t >= 1.6 {
+                let v = seg(t, 1.6, 2.2), r = ring(v, 1.2)
+                f.rot = wob(v, 2, 2.2) * 6; f.headTilt = CGFloat(-wob(v, 2, 2.2) * 5)
+                f.sy = CGFloat(1 - 0.06 * r); f.sx = CGFloat(1 + 0.05 * r)
+                if v < 0.7 { f.eyes = .happy }
+            }
+        case .look:
+            // glance left (a touch past) → hold, ear flick → swing right → hold, slow blink → back to centre, a nod
+            func turn(_ t: Double) -> Double {
+                -3 * back(seg(t, 0.15, 0.5), 1.2) + 6 * back(seg(t, 1.0, 1.45), 1.2) - 3 * smooth(seg(t, 1.95, 2.35))
+            }
+            let h = turn(t)
+            f.headTurn = CGFloat(h)
+            f.headTilt = CGFloat(h * 2 + wob(seg(t, 2.3, 2.6), 1.5) * 2.5)
+            f.pupil = CGFloat(h * 0.5)
+            f.rot = turn(t - 0.12) * 0.5                           // the body follows a beat behind the head
+            f.earTwitch = bump(seg(t, 0.65, 0.85)) + bump(seg(t, 1.6, 1.8))
+            if t > 1.72 && t < 1.84 { f.eyes = .shut }
+            f.tail = CGFloat(sin(t * 2 * .pi * 0.6) * 2 * bump(seg(t, 0, 2.6)))
+        case .jump:
+            // crouch low with a wiggle → the leap stretches long, nose up then down → lands front-on with a squash
+            let t0 = jumpTakeoff, t1 = jumpTakeoff + jumpFlight
+            if t < t0 {
+                let c = smooth(seg(t, 0, 0.18))
+                f.skin = .crouch; f.sy = CGFloat(1 - 0.1 * c); f.sx = CGFloat(1 + 0.07 * c)
+                f.rot = wob(seg(t, 0.08, t0), 1, 1) * 2.5
+            } else if t < t1 {
+                let u = seg(t, t0, t1)
+                f.skin = .leap
+                f.sx = CGFloat(1 + 0.08 * bump(u)); f.sy = CGFloat(1 - 0.05 * bump(u))
+                f.rot = -7 + 14 * smooth(u)
+                f.lift = CGFloat(4 * bump(u))
+            } else {
+                let r = ring(seg(t, t1, duration(.jump)), 1.3)
+                f.skin = .rest; f.sy = CGFloat(1 - 0.15 * max(r, 0)); f.sx = CGFloat(1 + 0.11 * r)   // never taller: the jump's panel ends at the pin
+                if t < t1 + 0.18 { f.eyes = .shut }
+            }
+        case .nap:
+            // drowsy (eyes droop, head nods) → flops down with a squash → one slow breath, a z drifts up → wakes, pops up
+            if t < 0.5 {
+                let d = smooth(seg(t, 0, 0.5))
+                f.skin = .rest; f.eyes = t < 0.25 ? .half : .shut
+                f.headTilt = CGFloat(4 * d); f.sy = CGFloat(1 - 0.03 * d); f.sx = CGFloat(1 + 0.02 * d); f.ears = CGFloat(0.4 * d)
+            } else if t < 2.75 {
+                let r = ring(seg(t, 0.5, 0.95), 1, 3)
+                let breath = 0.5 - 0.5 * cos(seg(t, 0.8, 2.75) * 2 * .pi)
+                f.sy = CGFloat((1 - 0.1 * r) * (1 + 0.025 * breath)); f.sx = CGFloat(1 + 0.06 * r)
+                let zu = seg(t, 1.0, 2.6)
+                f.z = (CGFloat(zu * 10), zu <= 0 || zu >= 1 ? 0 : (zu < 0.25 ? zu / 0.25 * 0.8 : 0.8 * (1 - (zu - 0.25) / 0.75)))
+            } else {
+                let v = seg(t, 2.75, 3.4), r = ring(v, 1.2)
+                f.skin = .rest; f.sy = CGFloat(1 + 0.05 * r); f.sx = CGFloat(1 - 0.03 * r)
+                f.eyes = v < 0.45 ? .half : nil
+                f.earTwitch = bump(seg(t, 3.0, 3.2))
+            }
+        case .clingy, .none:
+            break
+        }
+        return f
     }
 }
