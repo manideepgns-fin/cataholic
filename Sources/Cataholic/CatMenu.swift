@@ -300,6 +300,7 @@ enum CatMenuPanel {
         ]
     }
 
+    static var isOpen: Bool { panel != nil }
     static func close() {
         monitors.forEach(NSEvent.removeMonitor); monitors = []
         panel?.orderOut(nil); panel = nil

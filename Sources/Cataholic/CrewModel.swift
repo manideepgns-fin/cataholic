@@ -176,6 +176,14 @@ final class CrewModel: ObservableObject {
     @Published var jumpCrouch = false           // the 0.2 s take-off crouch, before the leap
     @Published var jumpFacing: Double = 1       // 1 = leaps right · -1 = leaps left (the drawing is mirrored)
     @Published var spinDeg: Double = 0          // tail-chase spin (deg) — snapshots only; live, CrewView reads the clock
+    /// A longer nap (on her own): seconds the curled-up middle is held — as ONE still frame (Emote.frame `hold`, CrewView).
+    @Published var napHold: Double = 0
+    /// Right now inside that hold — CrewView draws a still frame (no 30 fps timeline).
+    var napStill: Bool {
+        guard action == .nap, napHold > 0 else { return false }
+        let e = Date().timeIntervalSince(lastActionStarted)
+        return e >= Emote.napHoldAt && e < Emote.napHoldAt + napHold
+    }
     private var schedWork: DispatchWorkItem? = nil
     private var actionWork: DispatchWorkItem? = nil
     private var lastActionAt = Date.distantPast
@@ -195,9 +203,11 @@ final class CrewModel: ObservableObject {
 
     /// Any autonomous action in progress stops instantly on a click (the click wins).
     func stopAction() {
+        touched()
         actionWork?.cancel()
         actionWork = nil
         action = .none
+        napHold = 0
         ringOpen = false
         hiBubble = nil
         jumpLift = 0
@@ -209,22 +219,42 @@ final class CrewModel: ObservableObject {
     }
 
     private var lifeOff: Bool { CrewPrefs.quiet || Fx.reduced || Fx.snapshot }
-    private func macIdle() -> Double {
-        Double(CGEventSource.secondsSinceLastEventType(.combinedSessionState,
-                                                       eventType: .mouseMoved))
-    }
+    /// Seconds since ANY input — keys too (reading only .mouseMoved counted a typing owner as away).
+    private func macIdle() -> Double { CataholicIdle.seconds }
     private var userTypingOrDragging: Bool {
         (NSEvent.pressedMouseButtons != 0)
             || (CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: .keyDown) < 2)
     }
 
-    func scheduleNext(initial: Bool = false) {
+    /// On her own, continuous (owner 13 Oct 2026: "no 10 or 20 sec also, just keep doing something"): every point where
+    /// she settles calls this, and the next thing starts after a short beat. After a touch (a click, a drag, a menu pick)
+    /// the beat is 3–5 s, so she doesn't run off from under your hand.
+    func chain(_ beat: ClosedRange<Double> = 0.3...1.5) {
+        guard CrewPrefs.onHerOwn else { return }
+        scheduleNext(after: max(.random(in: beat), touchQuiet.timeIntervalSinceNow))
+    }
+    /// A touch: the next thing waits 3–5 s (stopAction is the one funnel every click / drag / ring tap goes through).
+    private var touchQuiet = Date.distantPast
+    func touched() {
+        touchQuiet = Date().addingTimeInterval(.random(in: 3...5))
+        chain()
+    }
+    private var awayIdle = false                 // on her own: you've been away > 5 min — she stops until you're back
+
+    func scheduleNext(initial: Bool = false, after: Double? = nil) {
         schedWork?.cancel()
-        // Weighted mean ~6 min (180–540 s), always ≥ 90 s after the last action. On her own: something every 10–20 s, and
-        // the first one right away (owner 13 Oct 2026: "it can be every 10 or 20 seconds … it needs to keep doing something").
-        var wait = CrewPrefs.onHerOwn ? Double.random(in: 10...20) : Double.random(in: 180...540)
-        if initial { wait = CrewPrefs.onHerOwn ? 1 : Double.random(in: 60...180) }
-        if !CrewPrefs.onHerOwn { wait = max(wait, Tune.minGap - Date().timeIntervalSince(lastActionAt)) }
+        if CrewPrefs.onHerOwn {
+            // `after` = a beat from chain(); else the watchdog — a finish that never reports (stopLife cancels a glide
+            // without calling `done`) never stalls her: ownTurn re-arms it after every try.
+            let w = DispatchWorkItem { [weak self] in Task { @MainActor in self?.ownTurn() } }
+            schedWork = w
+            DispatchQueue.main.asyncAfter(deadline: .now() + (after ?? (initial ? 1 : 4)), execute: w)
+            return
+        }
+        // Weighted mean ~6 min (180–540 s), always ≥ 90 s after the last action.
+        var wait = Double.random(in: 180...540)
+        if initial { wait = Double.random(in: 60...180) }
+        wait = max(wait, Tune.minGap - Date().timeIntervalSince(lastActionAt))
         let w = DispatchWorkItem { [weak self] in
             Task { @MainActor in
                 self?.fireNext()
@@ -235,19 +265,23 @@ final class CrewModel: ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + wait, execute: w)
     }
 
+    /// One turn on her own: pick the next thing (CrewOwn) and start it. Silent, like every life action (owner 27 Sep 2026:
+    /// sounds "only when you interact"); never while you hold her, point at her, have her menu or the game open, mid-fall,
+    /// hidden, in Quiet mode / Reduce Motion, or over a full-screen app / slideshow. Away > 5 min → she stops, and looks
+    /// every 5 s for you to come back.
+    private func ownTurn() {
+        let idle = macIdle()
+        if idle > Tune.idleGrace { awayIdle = true }
+        if awayIdle, idle < 2 { awayIdle = false }
+        if awayIdle { scheduleNext(after: 5); return }
+        guard CrewPrefs.showCrew, !lifeOff, action == .none, !ringOpen, !CrewPanel.pointerOnHer, !CrewPanel.zooming, !airborne,
+              !CrewPanel.busy, !CrewMove.holding, CrewPanel.visible, !CatMenuPanel.isOpen, !FindMyCat.isOpen,
+              touchQuiet.timeIntervalSinceNow <= 0, !CrewPanel.fullScreenInFront() else { scheduleNext(after: 1); return }
+        scheduleNext()                                      // the watchdog; whatever she starts re-arms it sooner (chain)
+        CrewOwn.turn(model: self, hiOK: Date().timeIntervalSince(lastHiAt) > 1800)
+    }
+
     private func fireNext() {
-        // On her own: a walk / climb / zoomies half the time, else one of the nine "Do something" actions — and when there is
-        // nowhere to move, an action instead, so no turn is wasted. Hi at most every 30 min.
-        // Silent, like every life action (owner 27 Sep 2026: sounds "only when you interact"); never while you hold her,
-        // mid-fall, hidden, or over a full-screen app / slideshow.
-        if CrewPrefs.onHerOwn, CrewPrefs.showCrew, !lifeOff, action == .none, !ringOpen, !CrewPanel.zooming, !airborne,
-           !CrewPanel.busy, !CrewMove.holding, macIdle() < Tune.idleGrace, !CrewPanel.fullScreenInFront() {
-            if Bool.random(), CrewPanel.wander() { return }
-            let hiOK = Date().timeIntervalSince(lastHiAt) > 1800
-            let pick = Self.ringActions.map(\.0).filter { $0 != .hi || hiOK }.randomElement() ?? .look
-            startAction(pick)
-            return
-        }
         guard Tune.autonomous, !lifeOff, action == .none, !ringOpen, !CrewPanel.zooming else { return }
         guard macIdle() < Tune.idleGrace else { return }   // Mac in use only
         let hiOK = Date().timeIntervalSince(lastHiAt) > 1800
@@ -294,6 +328,13 @@ final class CrewModel: ObservableObject {
         case .none: return
         }
         let end = overrideDur ?? dur
+        if a == .nap, end > dur, !still {
+            // the view only re-reads `napStill` when the model publishes: once as the hold starts, once as it ends
+            napHold = end - dur
+            for at in [Emote.napHoldAt + 0.05, Emote.napHoldAt + napHold + 0.01] {
+                DispatchQueue.main.asyncAfter(deadline: .now() + at) { [weak self] in MainActor.assumeIsolated { self?.objectWillChange.send() } }
+            }
+        }
         actionWork?.cancel()
         let w = DispatchWorkItem { [weak self] in
             Task { @MainActor in self?.endAction() }
@@ -372,6 +413,7 @@ final class CrewModel: ObservableObject {
         hoverWork?.cancel()
         leaveWork?.cancel()
         ringOpen = false
+        touched()
         startAction(a, user: true)
     }
 
@@ -383,7 +425,9 @@ final class CrewModel: ObservableObject {
         jumpFacing = 1
         spinDeg = 0
         action = .none          // every performance has already settled back to the resting pose by now
+        napHold = 0
         CrewPanel.refit()
+        chain()
     }
 
     /// Once-a-second watch: welcome-back hi + clingy proximity. No work when
@@ -507,6 +551,8 @@ enum Emote {
     /// The jump's crouch, then its flight — CrewPanel.lifeJump starts the travel at `jumpTakeoff` and glides `jumpFlight`.
     static let jumpTakeoff = 0.35
     static let jumpFlight = 0.9
+    /// A held nap freezes here: curled up, mid-breath, the z gone (CrewModel.napHold).
+    static let napHoldAt = 3.1
 
     static func duration(_ a: CrewModel.Action) -> Double {
         switch a {
@@ -545,8 +591,11 @@ enum Emote {
         CGPoint(x: a.x + (b.x - a.x) * CGFloat(k), y: a.y + (b.y - a.y) * CGFloat(k))
     }
 
-    static func frame(_ a: CrewModel.Action, at t: Double, hanging: Bool = false) -> EmoteFrame {
+    static func frame(_ a: CrewModel.Action, at t0: Double, hanging: Bool = false, hold: Double = 0) -> EmoteFrame {
         var f = EmoteFrame()
+        // A held nap: the clock stops at napHoldAt for `hold` seconds, then the wake-up plays as usual.
+        var t = t0, held = false
+        if a == .nap, hold > 0, t0 >= napHoldAt { if t0 < napHoldAt + hold { t = napHoldAt; held = true } else { t = t0 - hold } }
         guard t < duration(a) else { f.skin = .rest; return f }
         switch a {
         case .hi:
@@ -726,6 +775,7 @@ enum Emote {
         case .clingy, .none:
             break
         }
+        if held { f.z.1 = 0 }
         return f
     }
 }

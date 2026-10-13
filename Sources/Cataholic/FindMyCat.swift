@@ -22,6 +22,7 @@ import SwiftUI
     private static var monitor: Any?
     fileprivate static var camera: FindCamera?
 
+    static var isOpen: Bool { window?.isVisible == true }
     static func open() {
         if let w = window { NSApp.activate(ignoringOtherApps: true); w.makeKeyAndOrderFront(nil); return }
         let size = NSSize(width: FindScene.size.width, height: FindScene.size.height + FindMyCatView.headerH)

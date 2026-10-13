@@ -36,14 +36,14 @@ struct CrewView: View {
         let pose = model.pose
         let out = model.isOut
         let running = model.runFacing != 0
-        // Zoomies face the way they run; a leap (and its crouch) faces the way it jumps.
-        let facing: Double = running ? (model.runFacing < 0 ? -1 : 1) : (model.action == .jump ? model.jumpFacing : 1)
+        // Zoomies face the way they run; a leap (and its crouch) faces the way it jumps; a peek over an edge faces out.
+        let facing: Double = running ? (model.runFacing < 0 ? -1 : 1) : (model.action == .jump || model.action == .look ? model.jumpFacing : 1)
         let breatheScale = lifeBreatheScale(t)
         // An emote is a performance on the clock (Emote.frame): read once per frame from the timeline's date.
         // Quiet mode / Reduce Motion / snapshots: the identity frame — the action's still pose.
         let animating = model.action != .none && !lifeOffSchedule && !Fx.snapshot
         let f = animating ? Emote.frame(model.action, at: date.timeIntervalSince(model.lastActionStarted),
-                                             hanging: CrewPanel.hanging && !model.airborne) : EmoteFrame()
+                                             hanging: CrewPanel.hanging && !model.airborne, hold: model.napHold) : EmoteFrame()
         let spinScale = model.action == .spin ? cos((Fx.snapshot ? model.spinDeg : f.spin) * .pi / 180) : cos(f.spin * .pi / 180)
         let skin: CrewSkinState
         switch f.skin {
@@ -305,9 +305,9 @@ struct CrewView: View {
     private var lifeOffSchedule: Bool { Fx.reduced || CrewPrefs.quiet }
     /// Frames only while something moves (owner 28 Sep 2026: "if its idle its idle, no theatrics"). At rest the cat
     /// is ONE still frame — no breathing, tail sway, blinks or eyes on the pointer — and redraws only when its state
-    /// changes (the model publishes). A 30 fps life layer cost ~12% CPU and leaked memory every frame.
+    /// changes (the model publishes). A 30 fps life layer cost ~12% CPU and leaked memory every frame. A held nap is still too.
     private var moving: Bool {
-        model.action != .none || model.runFacing != 0 || model.airborne || model.jumpCrouch || model.squash != 1
+        (model.action != .none && !model.napStill) || model.runFacing != 0 || model.airborne || model.jumpCrouch || model.squash != 1
     }
     private func lifeBreatheScale(_ t: Double) -> CGFloat {
         guard lifeBreathing else { return 1 }

@@ -42,6 +42,11 @@ enum CrewPanel {
     }
 
     static func hide() { roam = nil; panel?.orderOut(nil) }
+    static var visible: Bool { panel?.isVisible == true }
+    /// The pointer is on her — by geometry: .onHover can miss the exit when she walks out from under a still pointer.
+    static var pointerOnHer: Bool {
+        charScreenRect()?.insetBy(dx: 6 * CrewLayout.zoom, dy: 6 * CrewLayout.zoom).contains(NSEvent.mouseLocation) == true
+    }
 
     /// Double-click on the cat (owner 13 Oct 2026: "double click takes to find my cat, only one feature, simple"):
     /// the Find my cat game. Quick launch and its favourite are gone.
@@ -58,12 +63,16 @@ enum CrewPanel {
     static var hanging: Bool { UserDefaults.standard.object(forKey: "crewHang") as? Bool ?? true }
     static func setHanging(_ on: Bool) { UserDefaults.standard.set(on, forKey: "crewHang") }
     /// The character box's top-left in top-space (y down) — where the cat is DRAWN right now.
-    private static func charTopLeft(_ screen: NSScreen) -> CGPoint? {
+    static func charTopLeft(_ screen: NSScreen) -> CGPoint? {
         guard let r = panel?.charRect() else { return nil }
         return CGPoint(x: r.minX, y: screen.frame.maxY - r.maxY)
     }
     /// Remember where the cat now lives (the keys a drag writes) and let the panel sit there.
-    private static func settleHome(left: CGFloat, top: CGFloat, screen: NSScreen) {
+    static func settleHome(left: CGFloat, top: CGFloat, screen: NSScreen) {
+        // The window she now sits on and where along it (on her own she rides it when it slides sideways — checkPerch)
+        let wins = CrewGravity.windows(), fl = CrewGravity.floorBelow(x: left + CrewLayout.screenW / 2,
+                                                                       fromY: top + CrewGravity.feet - 3, in: screen, wins: wins)
+        perch = (abs(fl.y - top - CrewGravity.feet) > 3 ? nil : fl.window).flatMap { id in wins.first { $0.id == id } }.map { (id: $0.id, dx: left - $0.rect.minX, top: $0.rect.minY) }
         let d = UserDefaults.standard
         d.set(Double(left - screen.frame.minX), forKey: "crewLeft")
         d.set(Double(top), forKey: "crewTop")
@@ -72,6 +81,8 @@ enum CrewPanel {
         calmChecks = 0                                   // a new perch: watch it closely for a moment
     }
     private static var fallTimer: Timer? = nil
+    /// The window under her feet: its id, her left minus its left, and its top (settleHome).
+    private static var perch: (id: Int, dx: CGFloat, top: CGFloat)? = nil
     /// Let go of the cat, or knock it off its perch: it flies with (vx, vy) pt/s (y down), bounces off the
     /// screen sides and the menu bar, and lands on the first floor under it — squash, and one small bounce
     /// when it came down hard. Wide eyes while airborne (CrewView).
@@ -89,9 +100,9 @@ enum CrewPanel {
         }
         var x = start.x, y = start.y, vx = vx, vy = vy, last = Date(), bounces = 0
         model?.airborne = true
-        fallTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60, repeats: true) { t in
+        fallTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30, repeats: true) { t in   // 30 Hz: she moves a lot on her own (CPU)
             MainActor.assumeIsolated {
-                let now = Date(), dt = CGFloat(min(now.timeIntervalSince(last), 1.0 / 30)); last = now
+                let now = Date(), dt = CGFloat(min(now.timeIntervalSince(last), 1.0 / 15)); last = now
                 let prevFeet = y + feet
                 vy += CrewGravity.g * dt
                 x += vx * dt; y += vy * dt
@@ -109,6 +120,7 @@ enum CrewPanel {
                             model?.land(0.7)
                             settleHome(left: x, top: y, screen: screen)
                             done?()
+                            model?.chain()
                             return
                         }
                     }
@@ -136,6 +148,14 @@ enum CrewPanel {
         guard !hanging, model?.airborne != true, !zooming, lifeTimer == nil, !CrewMove.holding, !CrewPrefs.quiet,
               panel?.isVisible == true, let screen = CrewScreen.home, let at = charTopLeft(screen) else { return }
         let wins = CrewGravity.windows(), cx = at.x + CrewLayout.screenW / 2, feetY = at.y + CrewGravity.feet
+        // On her own she rides her window when you slide it sideways (same top, new left): she keeps her spot on it.
+        if CrewPrefs.onHerOwn, let p = perch, let w = wins.first(where: { $0.id == p.id }), abs(w.rect.minY - p.top) < 1,
+           case let nl = min(max(w.rect.minX + p.dx, screen.frame.minX), screen.frame.maxX - CrewLayout.screenW),
+           abs(nl - at.x) >= 1, roam == nil {
+            settleHome(left: nl, top: at.y, screen: screen)
+            calmChecks = 0
+            return
+        }
         if CrewGravity.supported(x: cx, feetY: feetY, in: screen, wins: wins) { calmChecks += 1; return }
         calmChecks = 0
         if let w = wins.first(where: { $0.rect.minY < feetY && $0.rect.minY > feetY - 90
@@ -179,9 +199,9 @@ enum CrewPanel {
         var i = 0, x = xs[0], v: CGFloat = 0, phase = 0.0, stage = 0     // 0 scramble · 1 run · 2 skid · 3 look
         var stageT = Date(), last = Date(), pause = 0.45
         m.runStride = 38
-        Timer.scheduledTimer(withTimeInterval: 1.0 / 60, repeats: true) { t in
+        Timer.scheduledTimer(withTimeInterval: 1.0 / 30, repeats: true) { t in
             MainActor.assumeIsolated {
-                let now = Date(), dt = min(now.timeIntervalSince(last), 1.0 / 30); last = now
+                let now = Date(), dt = min(now.timeIntervalSince(last), 1.0 / 15); last = now
                 let se = now.timeIntervalSince(stageT)
                 if caught || i >= legs.count {
                     t.invalidate()
@@ -192,6 +212,7 @@ enum CrewPanel {
                     m.land(0.75)
                     m.petUntil = Date().addingTimeInterval(1.3)
                     DispatchQueue.main.asyncAfter(deadline: .now() + 1.35) { MainActor.assumeIsolated { m.objectWillChange.send() } }
+                    m.chain(1.4...2.4)                    // after the squint
                     return
                 }
                 let leg = legs[i], dir: CGFloat = leg.b >= leg.a ? 1 : -1
@@ -238,7 +259,7 @@ enum CrewPanel {
     /// in flight, settled next to the pointer): top-left, screen points, y from
     /// the screen top. nil = home. The panel around it changes size with the
     /// pose (CrewLayout) — moving the CHARACTER keeps its feet anchored.
-    fileprivate static var roam: (left: CGFloat, top: CGFloat)? = nil
+    static var roam: (left: CGFloat, top: CGFloat)? = nil
     /// One mover at a time: a 60 Hz timer gliding the character box. The
     /// zoomies timer owns its own path; life actions never run mid-zoomies
     /// (the scheduler guards) and a click stops them via stopLife().
@@ -267,7 +288,7 @@ enum CrewPanel {
         let r = p.charRect()
         return NSPoint(x: r.midX, y: r.midY)
     }
-    private static func glide(toLeft: CGFloat, toTop: CGFloat, dur: Double, hop: Double = 0,
+    static func glide(toLeft: CGFloat, toTop: CGFloat, dur: Double, hop: Double = 0,
                               done: (() -> Void)? = nil) {
         guard let p = panel, let screen = CrewScreen.home else { return }
         lifeTimer?.invalidate()
@@ -278,7 +299,7 @@ enum CrewPanel {
         let dist = hypot(toLeft - fromLeft, toTop - fromTop)
         let walks = hop == 0 && dist > 12 && !Fx.reduced
         let dur = walks ? min(max(Double(dist) / 100, 0.6), 5) : dur
-        lifeTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60, repeats: true) { timer in
+        lifeTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30, repeats: true) { timer in
             MainActor.assumeIsolated {
                 let e = Date().timeIntervalSince(t0)
                 let u = min(e / dur, 1)
@@ -305,18 +326,29 @@ enum CrewPanel {
     }
     /// Jump: crouch 0.2 s, then a parabolic arc to the opposite side of its
     /// screen; where it lands is its new home (persisted like a drag).
+    /// On her own: the next jump goes HERE (a window top) instead of across the screen — CrewOwn sets it, lifeJump uses it once.
+    static var leapTarget: (left: CGFloat, top: CGFloat)? = nil
     static func lifeJump() {
+        let target = leapTarget; leapTarget = nil
         guard !zooming, let p = panel, let screen = CrewScreen.home else { return }
         let vf = screen.visibleFrame, r = p.charRect()
-        let fromLeft = r.minX, top = screen.frame.maxY - r.maxY
+        let fromLeft = r.minX, fromTop = screen.frame.maxY - r.maxY
         let leftX = screen.frame.minX + 8
         let rightX = max(leftX, vf.maxX - CrewLayout.screenW - 8)
-        let destL = abs(fromLeft - leftX) < abs(fromLeft - rightX) ? rightX : leftX
+        let destL = target?.left ?? (abs(fromLeft - leftX) < abs(fromLeft - rightX) ? rightX : leftX)
+        let top = target?.top ?? fromTop
+        // window to window: the arc clears the higher ledge by 40 pt, so a leap up never cuts through its edge
+        let hop = target == nil ? 60 * Double(CrewLayout.zoom) : max(40, Double(fromTop - top) + 40)
         model?.jumpFacing = destL < fromLeft ? -1 : 1     // the crouch and the leap face the way it jumps
         let work = DispatchWorkItem {
             MainActor.assumeIsolated {
                 model?.jumpCrouch = false                 // take-off: crouch → leap
-                glide(toLeft: destL, toTop: top, dur: Emote.jumpFlight, hop: 60 * Double(CrewLayout.zoom)) {
+                glide(toLeft: destL, toTop: top, dur: Emote.jumpFlight, hop: hop) {
+                    if target != nil {
+                        settleHome(left: destL, top: top, screen: screen)
+                        climbed = true                    // up high by herself — the pointer can knock her off
+                        return
+                    }
                     let d = UserDefaults.standard
                     if destL + CrewLayout.screenW > screen.frame.maxX - 28 { d.removeObject(forKey: "crewLeft") }
                     else { d.set(Double(destL - screen.frame.minX), forKey: "crewLeft") }
@@ -343,27 +375,6 @@ enum CrewPanel {
         if !hanging, let at = charTopLeft(screen) { top = at.y }
         glide(toLeft: left, toTop: top, dur: 0.9)
     }
-    /// On her own (menu toggle, owner 13 Oct 2026: "make cat running around while i was working"): one time in four the
-    /// cat strolls to a new spot on the floor it stands on (and stays there), or now and then has
-    /// zoomies. Off by default; never in Quiet mode, under Reduce Motion, or over a full-screen app.
-    /// False: nothing to do from here (no room to walk, nothing to climb) — the caller does an action instead.
-    @discardableResult static func wander() -> Bool {
-        guard CrewPrefs.onHerOwn, !zooming, lifeTimer == nil, !CrewMove.holding, model?.airborne != true, model?.action == CrewModel.Action.none,
-              !CrewPrefs.quiet, !Fx.reduced, !fullScreenInFront(), let screen = CrewScreen.home, let at = charTopLeft(screen) else { return false }
-        let pick = Int.random(in: 0..<3)
-        if hanging || pick == 0 { zoomies(); return true }                    // a hanging cat drops first — zoomies does that
-        let wins = CrewGravity.windows(), w = CrewLayout.screenW
-        let fl = CrewGravity.floorBelow(x: at.x + w / 2, fromY: at.y + CrewGravity.feet - 3, in: screen, wins: wins)
-        if pick == 1, climb(at: at, floor: fl, screen: screen, wins: wins) { return true }
-        let lo = max(fl.x0, screen.frame.minX, at.x - 360) + 4, hi = min(fl.x1, screen.frame.maxX, at.x + w + 360) - w - 4
-        guard hi - lo > 80 else { return climb(at: at, floor: fl, screen: screen, wins: wins) }   // no room to walk: climb
-        var x = CGFloat.random(in: lo...hi)
-        if abs(x - at.x) < 60 { x = at.x - lo > hi - at.x ? lo : hi }
-        glide(toLeft: x, toTop: at.y, dur: 1) {
-            settleHome(left: x, top: at.y, screen: screen)                   // where it strolled to is its new spot (perch watched closely)
-        }
-        return true
-    }
     /// Something moving her right now (a walk, a leap, a climb, a fall) — the on-her-own scheduler waits for it.
     static var busy: Bool { lifeTimer != nil || fallTimer != nil || climbDir != 0 }
     /// Climbing (owner 13 Oct 2026: "climbing on screen, when i point cursor on it it falls from there"): she walks to
@@ -372,38 +383,48 @@ enum CrewPanel {
     /// climb, she climbs the nearer screen edge back up to her pin (zoomies take her off it). False: nothing to climb.
     private static var climbDir: CGFloat = 0           // mid-climb: 1 = the wall is on her right · -1 on her left
     private(set) static var climbed = false            // up high by herself — the pointer can knock her off (slip)
-    private static func climb(at: CGPoint, floor fl: CrewGravity.Floor, screen: NSScreen,
-                              wins: [(id: Int, rect: CGRect)]) -> Bool {
+    /// `edge`: only the screen edge up to the pin (from the Dock line) — else only a window side. Returns where she ends
+    /// up (box top-left) or nil: nothing to climb. `go: false` only asks (CrewOwn's picker).
+    static func climb(at: CGPoint, floor fl: CrewGravity.Floor, screen: NSScreen,
+                      wins: [(id: Int, rect: CGRect)], edge: Bool = false, go: Bool = true) -> CGPoint? {
         let w = CrewLayout.screenW, z = CrewLayout.zoom, feet = CrewGravity.feet, feetY = at.y + feet
         let gap = 12 * z                                // box centre → wall: the upright body's back against the edge
-        var best: (base: CGFloat, land: CGFloat, top: CGFloat, dir: CGFloat)? = nil
+        var best: (base: CGFloat, land: CGFloat, top: CGFloat, bottom: CGFloat, dir: CGFloat)? = nil
         for win in wins {
             let r = win.rect
-            guard r.minY < feetY - 60, r.maxY >= feetY - 4 else { continue }   // taller than her, its side reaches her floor
+            // taller than her, and its side reaches down to her floor — or stops at most 150 pt above it (she hops onto it)
+            guard r.minY < feetY - 60, r.maxY >= feetY - 150, r.maxY - r.minY > 120 else { continue }
             for (edge, dir) in [(r.minX, CGFloat(1)), (r.maxX, CGFloat(-1))] {
                 let base = edge - dir * gap - w / 2, land = dir > 0 ? r.minX + 6 : r.maxX - w - 6
                 guard base + w / 2 > fl.x0, base + w / 2 < fl.x1, base >= screen.frame.minX, base + w <= screen.frame.maxX,
                       abs(base - at.x) < 420,
                       CrewGravity.floorBelow(x: land + w / 2, fromY: r.minY - 0.5, in: screen, wins: wins).window == win.id
                 else { continue }
-                if best == nil || abs(base - at.x) < abs(best!.base - at.x) { best = (base, land, r.minY, dir) }
+                if best == nil || abs(base - at.x) < abs(best!.base - at.x) { best = (base, land, r.minY, r.maxY, dir) }
             }
         }
-        if let b = best {
-            glide(toLeft: b.base, toTop: at.y, dur: 1) {
+        if !edge, let b = best {
+            guard go else { return CGPoint(x: b.land, y: b.top - feet) }
+            let up = {
                 climbWall(left: b.base, to: b.top - feet + 2 * z, dir: b.dir) {   // head over the top edge…
                     glide(toLeft: b.land, toTop: b.top - feet, dur: 0.4, hop: 10 * Double(z)) {   // …and a hop onto it
                         settleHome(left: b.land, top: b.top - feet, screen: screen)
                         climbed = true
+                        model?.chain()
                     }
                 }
             }
-            return true
+            glide(toLeft: b.base, toTop: at.y, dur: 1) {
+                // a side that stops above her floor: a hop up onto its foot first
+                if b.bottom < feetY - 4 { glide(toLeft: b.base, toTop: b.bottom - feet, dur: 0.5, hop: Double(feetY - b.bottom) + 30) { up() } } else { up() }
+            }
+            return CGPoint(x: b.land, y: b.top - feet)
         }
-        guard fl.window == nil else { return false }   // up the screen edge to the pin — only from the Dock line
+        guard edge, fl.window == nil else { return nil }   // up the screen edge to the pin — only from the Dock line
         let right = at.x + w / 2 > screen.frame.midX, dir: CGFloat = right ? 1 : -1
         let base = right ? screen.frame.maxX - w / 2 - gap : screen.frame.minX - w / 2 + gap
         let hangTop: CGFloat = 64                       // CrewMove.top's default: the pin under the menu bar
+        guard go else { return CGPoint(x: base, y: hangTop) }
         glide(toLeft: base, toTop: at.y, dur: 1) {
             climbWall(left: base, to: hangTop, dir: dir) {
                 settleHome(left: base, top: hangTop, screen: screen)
@@ -412,30 +433,48 @@ enum CrewPanel {
                 climbed = true
                 panel?.refit()
                 model?.land(0.85)
+                model?.chain()
             }
         }
-        return true
+        return CGPoint(x: base, y: hangTop)
     }
-    /// The climb itself: up the wall at `left` to box top `top1`, one 60 Hz timer only while she climbs. The pointer
-    /// on her makes her let go (slip).
-    private static func climbWall(left: CGFloat, to top1: CGFloat, dir: CGFloat, done: @escaping () -> Void) {
+    /// The climb itself: up (or down — on her own, head first) the wall at `left` to box top `top1`, one 30 Hz timer only
+    /// while she climbs. The pointer on her makes her let go (slip).
+    static func climbWall(left: CGFloat, to top1: CGFloat, dir: CGFloat, done: @escaping () -> Void) {
         guard let p = panel, let m = model, let screen = CrewScreen.home, let at = charTopLeft(screen) else { return }
         lifeTimer?.invalidate()
         climbDir = dir
-        m.runFacing = dir > 0 ? 1 : -1; m.runStride = 22; m.runSpeed = 0; m.runGait = 0; m.runLean = 0
-        m.climbRot = -90 * Double(dir)                  // head up, belly to the wall
+        let down: CGFloat = top1 > at.y ? 1 : -1
+        m.runFacing = dir * -down > 0 ? 1 : -1; m.runStride = 22; m.runSpeed = 0; m.runGait = 0; m.runLean = 0
+        m.climbRot = -90 * Double(dir)                  // head up (or, facing back, head down) — belly to the wall either way
         let z = CrewLayout.zoom
         var y = at.y, t = 0.0, last = Date()
-        lifeTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60, repeats: true) { timer in
+        // Going up (desktop-pet prior art): a 0.4 s scratch at the foot of the wall first, so the climb reads as meant —
+        // and one climb in six fails halfway: she slides back a little, lets go, lands, and shakes it off with zoomies.
+        let claw = down < 0 ? 0.4 : 0.0
+        let failAt: CGFloat? = down < 0 && Int.random(in: 0..<6) == 0 ? (at.y + top1) / 2 : nil
+        var slideT: Double? = nil
+        lifeTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30, repeats: true) { timer in
             MainActor.assumeIsolated {
-                let now = Date(), dt = min(now.timeIntervalSince(last), 1.0 / 30); last = now; t += dt
-                let v = 160 * (0.2 + 0.8 * max(0, sin(t * 2 * .pi * 1.5)))        // small pulls, ~70 pt/s
-                y = max(top1, y - CGFloat(v * dt))
+                let now = Date(), dt = min(now.timeIntervalSince(last), 1.0 / 15); last = now; t += dt
+                if let s0 = slideT {                                                 // losing her grip
+                    y += CGFloat(110 * dt); roam = (left, y); p.refit()
+                    if t - s0 > 0.35 {
+                        timer.invalidate(); lifeTimer = nil; climbDir = 0
+                        m.runFacing = 0; m.runPhase = 0; m.runStride = 38; m.climbRot = 0
+                        drop(vx: -110 * dir, vy: 30) { CrewOwn.lastZoomies = Date(); zoomies() }
+                    }
+                    return
+                }
+                if t < claw { m.runPhase += dt * 16; return }                        // paws up on the wall, a quick scratch
+                let v = 160 * (0.2 + 0.8 * max(0, sin((t - claw) * 2 * .pi * 1.5)))  // small pulls, ~70 pt/s
+                y = down > 0 ? min(top1, y + CGFloat(v * dt)) : max(top1, y - CGFloat(v * dt))
                 m.runPhase += v * dt / Double(z) / 3
+                if let f = failAt, y <= f { slideT = t }
                 roam = (left, y)
                 p.refit()
                 if p.charRect().insetBy(dx: 6 * z, dy: 6 * z).contains(NSEvent.mouseLocation) { slip(); return }
-                if y <= top1 {
+                if y == top1 {
                     timer.invalidate(); lifeTimer = nil; climbDir = 0
                     m.runFacing = 0; m.runPhase = 0; m.runStride = 38; m.climbRot = 0
                     done()
@@ -483,7 +522,14 @@ enum CrewPanel {
         }
     }
     /// A window of another app covering the whole screen (a full-screen app, a slideshow).
+    private static var fullScreenSeen = (at: Date.distantPast, yes: false)
     static func fullScreenInFront() -> Bool {
+        if Date().timeIntervalSince(fullScreenSeen.at) < 2 { return fullScreenSeen.yes }   // the window list costs; ask at most every 2 s
+        let yes = fullScreenNow()
+        fullScreenSeen = (Date(), yes)
+        return yes
+    }
+    private static func fullScreenNow() -> Bool {
         guard let screen = CrewScreen.home,
               let wins = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]]
         else { return false }
@@ -659,7 +705,10 @@ final class CrewNSPanel: NSPanel {
                                                     height: screen.frame.maxY - ceiling - screen.frame.minY + belowFeet),
                                      tucked: tucked)
         spec = s
-        setFrame(NSRect(x: r.minX, y: top - r.maxY, width: r.width, height: r.height), display: true)
+        let f = NSRect(x: r.minX, y: top - r.maxY, width: r.width, height: r.height)
+        // Same size (a walk, a climb, a fall): just move the window — no re-layout, no forced redraw (CPU).
+        if f.size == frame.size { if f.origin != frame.origin { setFrame(f, display: false) }; return }
+        setFrame(f, display: true)
         host.frame = NSRect(origin: .zero, size: frame.size)
     }
 }
@@ -772,6 +821,7 @@ struct CrewRoot: View {
             let sp = hypot(vx, vy); if sp > 3200 { vx *= 3200 / sp; vy *= 3200 / sp }
         }
         trail = []
+        CrewPanel.currentModel()?.touched()                              // on her own: she stays put a few seconds after you let go
         // A window top right under its feet wins over the pin (owner 13 Oct 2026: put on a window near the top, it
         // "gets attached to the top bar rather than sitting on" the window) — it hangs only with no window to stand on.
         if let screen = CrewScreen.home, let r = CrewPanel.charScreenRect(),
