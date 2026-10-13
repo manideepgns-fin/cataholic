@@ -43,14 +43,11 @@ enum CrewPanel {
 
     static func hide() { roam = nil; panel?.orderOut(nil) }
 
-    /// A click on the cat: the web Billing Desk (`?find=` rides along when the
-    /// owner searched from Raycast). The zoom game keeps working — the cat
-    /// stays fun.
-    /// Double-click: open the quick launcher's favourite (a link or an app). None saved → zoomies.
-    static func openDesk(find: String?) {
-        guard let fav = Launcher.favorite else { stopLife(); zoomies(); return }
-        Launcher.open(fav)
+    /// Double-click on the cat (owner 13 Oct 2026: "double click takes to find my cat, only one feature, simple"):
+    /// the Find my cat game. Quick launch and its favourite are gone.
+    static func openGame() {
         model?.dismissWhisper()
+        FindMyCat.open()
     }
 
     // MARK: — gravity (owner 27 Sep 2026, step 2 of "make it lively")
@@ -561,7 +558,7 @@ struct CrewRoot: View {
             ForEach(model.agents) { a in
                 if quiet {
                     quietDot
-                        .onTapGesture { CrewPanel.openDesk(find: nil) }
+                        .onTapGesture { CrewPanel.openGame() }
                         .help(quietTip)
                 } else {
                     CrewView(model: model, agent: a)

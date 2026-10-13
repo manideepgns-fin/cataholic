@@ -31,7 +31,7 @@ rm -rf "$FW/XPCServices" "$FW/Versions/B/XPCServices"      # only a sandboxed ap
 ID="${SIGN_ID:-$(security find-identity -v -p codesigning | sed -n 's/.*"\(Developer ID Application: .*\)"/\1/p' | head -1)}"
 if [[ -n "$ID" && "$ID" != "-" ]]; then
   # Inside-out: Sparkle's helpers, then the framework, then the app. Never --deep on the app — it would push our
-  # Apple-Events entitlement onto Sparkle's binaries. Notarization rejects anything left ad-hoc.
+  # entitlements onto Sparkle's binaries. Notarization rejects anything left ad-hoc.
   for part in "$FW/Versions/B/Autoupdate" "$FW/Versions/B/Updater.app" "$FW"; do
     codesign --force --options runtime --timestamp --sign "$ID" "$part"
   done

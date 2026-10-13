@@ -4,7 +4,8 @@ import Sparkle
 import SwiftUI
 
 // Cataholic — a chunky desktop cat (or a hundred) for macOS. The cat code is shared with Atlance's menu-bar cat;
-// this file is the app around it: a paw in the menu bar, launch at login, and the owner's own double-click link.
+// this file is the app around it: a paw in the menu bar, launch at login, updates and links. A double-click on the
+// cat opens Find my cat (FindMyCat.swift).
 
 @main
 struct CataholicApp: App {
@@ -32,7 +33,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         _ = Updates.controller                       // Sparkle starts checking (daily, in the background)
         CrewPanel.show()
         MainActor.assumeIsolated {
-            Watcher.start()
             CatMenuPanel.install()
             if WindowGuides.isOn { WindowGuides.start() }
         }
@@ -58,69 +58,6 @@ final class UpdateDelegate: NSObject, SPUUpdaterDelegate {
                  immediateInstallationBlock install: @escaping () -> Void) -> Bool {
         install()
         return true
-    }
-}
-
-/// The quick launcher (owner 27 Sep 2026: "quick launch double click"): named links and apps, one of them the
-/// favourite that a double-click opens. Right-click the cat (or the paw menu) → Quick launch.
-struct LaunchItem: Codable, Equatable, Identifiable {
-    var name: String
-    var target: String                       // a URL, or the path of an .app
-    var id: String { name + target }
-}
-
-@MainActor enum Launcher {
-    static var items: [LaunchItem] {
-        get {
-            if let d = UserDefaults.standard.data(forKey: "cataholicLaunch"),
-               let v = try? JSONDecoder().decode([LaunchItem].self, from: d) { return v }
-            // 0.1.0 kept one link — carry it over
-            if let s = UserDefaults.standard.string(forKey: "cataholicLink"), !s.isEmpty {
-                return [LaunchItem(name: URL(string: s)?.host ?? s, target: s)]
-            }
-            return []
-        }
-        set {
-            UserDefaults.standard.set(try? JSONEncoder().encode(newValue), forKey: "cataholicLaunch")
-            CrewPanel.applyPrefs()
-        }
-    }
-    static var favorite: LaunchItem? {
-        let f = UserDefaults.standard.string(forKey: "cataholicFavorite")
-        return items.first { $0.id == f } ?? items.first
-    }
-    static func setFavorite(_ i: LaunchItem) { UserDefaults.standard.set(i.id, forKey: "cataholicFavorite"); CrewPanel.applyPrefs() }
-    static func open(_ i: LaunchItem) {
-        if i.target.hasPrefix("/") { NSWorkspace.shared.open(URL(fileURLWithPath: i.target)) }
-        else if let u = URL(string: i.target) { NSWorkspace.shared.open(u) }
-    }
-    static func remove(_ i: LaunchItem) { items.removeAll { $0 == i } }
-
-    static func addLink() {
-        let a = NSAlert()
-        a.messageText = "Add a link"
-        a.informativeText = "Anything with a web address: a dashboard, a Slack channel, a playlist."
-        let name = NSTextField(frame: NSRect(x: 0, y: 30, width: 320, height: 24)); name.placeholderString = "Name (e.g. Billing Desk)"
-        let link = NSTextField(frame: NSRect(x: 0, y: 0, width: 320, height: 24)); link.placeholderString = "https://…"
-        let box = NSView(frame: NSRect(x: 0, y: 0, width: 320, height: 54)); box.addSubview(name); box.addSubview(link)
-        a.accessoryView = box
-        a.addButton(withTitle: "Add"); a.addButton(withTitle: "Cancel")
-        NSApp.activate(ignoringOtherApps: true)
-        guard a.runModal() == .alertFirstButtonReturn else { return }
-        var t = link.stringValue.trimmingCharacters(in: .whitespaces)
-        guard !t.isEmpty else { return }
-        if !t.contains("://") { t = "https://" + t }
-        let n = name.stringValue.trimmingCharacters(in: .whitespaces)
-        items.append(LaunchItem(name: n.isEmpty ? (URL(string: t)?.host ?? t) : n, target: t))
-    }
-    static func addApp() {
-        let p = NSOpenPanel()
-        p.allowedContentTypes = [.application]
-        p.directoryURL = URL(fileURLWithPath: "/Applications")
-        p.allowsMultipleSelection = true
-        NSApp.activate(ignoringOtherApps: true)
-        guard p.runModal() == .OK else { return }
-        items.append(contentsOf: p.urls.map { LaunchItem(name: $0.deletingPathExtension().lastPathComponent, target: $0.path) })
     }
 }
 
@@ -164,11 +101,9 @@ struct MailCase: Identifiable { let id: String; let title: String; let status: S
     var signCount: Int { cases.count }
     var yourMove: [MailCase] { cases }
     private var link = (count: 0, note: "")          // from a cataholic://sign link
-    private var watched: [(String, Int)] = []         // from Chrome tabs (Watcher), the one that just grew first
     func setSign(count: Int, note: String) { link = (max(0, count), note); rebuild() }
-    func setWatchSign(_ rows: [(String, Int)]) { watched = rows; rebuild() }
     private func rebuild() {
-        let rows = watched + (link.count > 0 ? [(link.note, link.count)] : [])
+        let rows = link.count > 0 ? [(link.note, link.count)] : []
         note = rows.first?.0 ?? ""
         cases = rows.flatMap { r in (0..<min(r.1, 999)).map { MailCase(id: "\(r.0)-\($0)", title: r.0, status: "Needs you", next: "") } }
     }
@@ -176,10 +111,6 @@ struct MailCase: Identifiable { let id: String; let title: String; let status: S
 
 enum MailClearanceFmt {
     static func splitTitle(_ t: String, fallback: String) -> (String, String) { (t, fallback) }
-}
-
-@MainActor enum AtlanceConfig {
-    static var billingDeskURL: String { "" }        // unused: the double-click goes through Launcher
 }
 
 @MainActor enum CataholicRender {

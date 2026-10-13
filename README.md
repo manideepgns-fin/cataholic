@@ -13,12 +13,13 @@ A chunky cat (or a hundred) that lives on your Mac.
 - **The multiplier** — right-click → *More cats* → up to 100 cats raining onto your screen. They never block a
   click; only your own cat is pettable.
 - **Pet it** — click for a purr and a happy squint.
-- **Quick launch** — save links and apps (right-click → *Quick launch*); double-click the cat opens your favourite
-  (no favourite yet → zoomies).
-- **Waiting for you** — right-click → *Waiting for you* → *Watch a link…* and paste a page you keep open in Chrome.
-  When its tab title shows a number — like “(3) Billing Desk” or “Inbox (12) - Gmail” — your cat holds it up; when it goes up
-  the cat hops where it sits and says who it's from for a few seconds, and a Mac notification lands in Notification Center. Click the notification (or the row) to jump to that tab. The first
-  time, macOS asks whether Cataholic may control Chrome: that's how it reads your tab titles. Nothing leaves your Mac.
+- **Find my cat** — double-click your cat and a little world opens with your cat hiding somewhere in it. Five levels,
+  each harder: a kingdom by day; the kingdom again with lookalikes in your own coat, each with one detail wrong (the
+  collar, the bell, the glasses, the ears, the tail tip, a spot); a harbour where only its ears peek out; a snowy village
+  where pale coats vanish into the snow; and the kingdom at night, where your pointer is a lantern. Then it's endless.
+  Three guesses a round — a miss leaves a paw print and says *warmer* or *colder* (or what gave a lookalike away); find
+  it and it pops up waving and you go up a level; miss three times and the scene dims around where it was.
+  Pinch (or ⌘+ / ⌘−, or the mouse wheel) to zoom in up to 3.5× and check a collar; drag or scroll to look around.
 - **Updates itself** — checks once a day; a new version is downloaded, verified against the author's signing key and swapped in
   (the cat relaunches for a second). Right-click → *Check for updates…* to ask right now.
 - **Signs** — any app or script can make your cat hold up a number, and it whispers when the number goes up:
@@ -35,7 +36,7 @@ A chunky cat (or a hundred) that lives on your Mac.
   mint, and a Force Touch trackpad gives a small tap. No permission needed.
   ![A window snapping onto the grid; the lines under its edges glow mint](docs/grid.png)
 - **One menu** — right-click the cat or click the paw: your cat and its coats up top, the emotes as a grid,
-  switches like Control Center, and *Waiting for you* / *Quick launch* side by side. It takes its colour from the cat
+  and switches like Control Center. It takes its colour from the cat
   you pick — Ginger orange, Smokey slate, Patches terracotta, Tux blue, Butter gold, Cocoa brown, Snow ice blue, Lilac lavender.
   ![The menu in lilac beside the lilac cat](docs/menu.png)
 - **Emotes that perform** — each one winds up, plays and settles: a mitten-paw wave, grooming with toe beans, a

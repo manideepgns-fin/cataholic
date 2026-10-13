@@ -53,6 +53,11 @@ struct CrewCharacter: View {
     var napPeek = false             // nap: one eye peeks open before it wakes
     var runSpeed: Double = 0        // zoomies: 0 … 1 of top speed (speed lines, dust)
     var runGait = 0                 // zoomies: 0 run · 1 scramble (feet spinning in place) · 2 skid
+    // Find my cat's lookalikes (owner 13 Oct 2026): the same coat with one detail wrong. Defaults = the real cat.
+    var collarTint: Color? = nil    // a different collar colour
+    var bell = true                 // the gold bell on the collar
+    var tailTip: Color? = nil       // a contrasting tip on the tail
+    var collarBold: CGFloat = 1     // thicker collar + bell, so the details read at the game's small size
 
     // The cat (owner 25 Sep 2026: "and cat please") — a ginger tabby, original drawing.
     // The coat (owner 27 Sep 2026: "3 4 styles of cats … we are officially cataholic"): the soft, lazy flat-vector
@@ -228,6 +233,11 @@ struct CrewCharacter: View {
                     tail.addQuadCurve(to: P(35 + tailSway, 32.5), control: P(38.5, 33))
                 }
                 T(&ctx, tail, 4.4, fur, s)
+                if let tip = tailTip {                                   // a lookalike's tail tip
+                    let e = state == .alert ? CGPoint(x: 34 + tailSway, y: 27.5) : CGPoint(x: 35 + tailSway, y: 32.5)
+                    var tp = Path(); tp.move(to: P(e.x + 2.2, e.y + 3.4)); tp.addLine(to: P(e.x, e.y))
+                    ctx.stroke(tp, with: .color(tip), style: StrokeStyle(lineWidth: 4.4 * s, lineCap: .round))
+                }
                 // Body + cream belly + back paws (life: breathing scale about the base).
                 // Crouch: body low, haunches up, take-off pose.
                 ctx.translateBy(x: P(23, 48).x, y: P(23, 48).y)
@@ -352,12 +362,15 @@ struct CrewCharacter: View {
                 if headTilt != 0 { ctx.rotate(by: .degrees(-headTilt)) }
                 ctx.translateBy(x: -P(23 + hdx, 21).x, y: -P(23 + hdx, 21).y)
                 // Collar + gold tag carrying the agent's glyph (on the body, unturned)
-                ctx.fill(Path(roundedRect: CGRect(x: 14 * s, y: 30.2 * s, width: 18 * s, height: 2.8 * s),
-                               cornerRadius: 1.4 * s), with: .color(collar))
-                ctx.fill(oval(19.8, 31.2, 6.4, 6.4), with: .color(gold))
-                let glyph = Text(colors.glyph).font(.system(size: 4.6 * s, weight: .heavy))
-                    .foregroundColor(Color.black.opacity(0.55))
-                ctx.draw(glyph, at: P(23, 34.5), anchor: .center)
+                let ch = 2.8 * collarBold, bd = 6.4 * (1 + (collarBold - 1) * 0.5)
+                ctx.fill(Path(roundedRect: CGRect(x: 14 * s, y: (31.6 - ch / 2) * s, width: 18 * s, height: ch * s),
+                               cornerRadius: ch / 2 * s), with: .color(collarTint ?? collar))
+                if bell {
+                    ctx.fill(oval(23 - bd / 2, 31.2 + (collarBold - 1), bd, bd), with: .color(gold))
+                    let glyph = Text(colors.glyph).font(.system(size: 4.6 * s * bd / 6.4, weight: .heavy))
+                        .foregroundColor(Color.black.opacity(0.55))
+                    ctx.draw(glyph, at: P(23, 31.2 + (collarBold - 1) + bd / 2), anchor: .center)
+                }
                 if state == .working || state == .reading {
                     // Holding a letter with both front paws
                     ctx.fill(Path(roundedRect: CGRect(x: 15 * s, y: 37 * s, width: 16 * s, height: 10 * s),

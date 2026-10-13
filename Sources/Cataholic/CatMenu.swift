@@ -5,15 +5,15 @@ import SwiftUI
 // CatMenu — the cat's menu as one crafted panel, not a settings form (owner 13 Oct 2026: "make these components
 // rather than a plain list … the whole menu", then "redo this"). The same view opens from the paw in the menu bar
 // (MenuBarExtra, window style) and from a right-click on the cat (CatMenuPanel, a pop-up beside the pointer).
-// Top to bottom, loudest first:
+// Top to bottom, loudest first (owner 13 Oct 2026: no Waiting for you, no Quick launch — "just a double click takes to
+// Find my cat", so the panel ends at the switches and the footer):
 //   1. Header — your cat, big, with its name, the eight coats as a strip of tiny cats beside it, and Zoomies.
 //   2. Do something — the 3×3 action grid, the hero of the panel.
 //   3. More cats — the herd size, one segmented row.
 //   4. Switches — five Control-Center chips (accent = on), each with a short caption.
-//   5. Waiting for you | Quick launch — two cards side by side, each with its own + (no "+ Add…" rows).
-//   6. Footer — the version, Check for updates and Quit as small fixed-size buttons (the old footer overflowed).
-// Nothing in the panel changes its height while it is open (the pop-up is sized once, from fittingSize), so the lists
-// sit side by side rather than in tabs. Every value lives where it always did (UserDefaults via its own enum).
+//   5. Footer — the version, Check for updates and Quit as small fixed-size buttons (the old footer overflowed).
+// Nothing in the panel changes its height while it is open (the pop-up is sized once, from fittingSize). Every value
+// lives where it always did (UserDefaults via its own enum).
 struct CatMenuView: View {
     var close: () -> Void = {}
     @ObservedObject private var ui = CatMenuUI.shared
@@ -52,11 +52,6 @@ struct CatMenuView: View {
                     try? on ? SMAppService.mainApp.register() : SMAppService.mainApp.unregister()
                 }
             }
-            HStack(alignment: .top, spacing: 8) {
-                waiting
-                launch
-            }
-            .fixedSize(horizontal: false, vertical: true)
             footer
         }
         .padding(14)
@@ -87,49 +82,6 @@ struct CatMenuView: View {
                             CatCoat.set(c); CrewPanel.applyPrefs(); CrewPanel.currentModel()?.pet(); tick += 1
                         }
                     }
-                }
-            }
-        }
-    }
-
-    private var waiting: some View {
-        Card(title: "Waiting for you", addHelp: "Watch a Chrome tab…", add: { close(); Watcher.add() }) {
-            if Watcher.watches.isEmpty {
-                Empty(text: "Watch a tab's count")
-            }
-            ForEach(Watcher.watches) { w in
-                let n = Watcher.counts[w.id]
-                Row(key: "watch-" + w.id, title: w.name, help: n == nil ? "Tab not open" : nil, trailing: {
-                    if let n, n > 0 {
-                        Text("\(n)").font(.system(size: 10, weight: .bold)).foregroundStyle(.white)
-                            .padding(.horizontal, 5).frame(minWidth: 16, minHeight: 15)
-                            .background(Capsule().fill(Color.catAccent))
-                    } else {
-                        Text(n == nil ? "off" : "0").font(.system(size: 10)).foregroundStyle(.tertiary)
-                    }
-                }) { close(); Watcher.open(w) }
-                .contextMenu { Button("Stop watching") { Watcher.remove(w); tick += 1 } }
-            }
-        }
-    }
-
-    private var launch: some View {
-        let fav = Launcher.favorite
-        return Card(title: "Quick launch", addHelp: "Add a link or an app", menu: [
-            ("Add a link…", { close(); Launcher.addLink() }),
-            ("Add an app…", { close(); Launcher.addApp() }),
-        ]) {
-            if Launcher.items.isEmpty {
-                Empty(text: "Links and apps")
-            }
-            ForEach(Launcher.items) { i in
-                Row(key: "launch-" + i.id, title: i.name, icon: LaunchIcon(item: i),
-                    help: i == fav ? "Opens on a double-click on the cat" : nil, trailing: {
-                    if i == fav { Image(systemName: "star.fill").font(.system(size: 9)).foregroundStyle(Color.catAccent) }
-                }) { close(); Launcher.open(i) }
-                .contextMenu {
-                    if i != fav { Button("Open on double-click") { Launcher.setFavorite(i); tick += 1 } }
-                    Button("Remove") { Launcher.remove(i); tick += 1 }
                 }
             }
         }
@@ -256,103 +208,6 @@ private struct Chip: View {
         }
         .buttonStyle(.plain).onHover { ui.hover("chip-" + title, $0) }
         .help(help + (on ? " — on" : " — off"))
-    }
-}
-
-/// A small rounded card: a heading with its own + (a button, or a menu when there is a choice), then rows.
-private struct Card<Content: View>: View {
-    let title: String, addHelp: String
-    var add: (() -> Void)? = nil
-    var menu: [(String, () -> Void)] = []
-    @ViewBuilder let content: () -> Content
-    @ObservedObject private var ui = CatMenuUI.shared
-    private var hover: Bool { ui.hovered == "add-" + title }
-    var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack(spacing: 4) {
-                Heading(title).lineLimit(1)
-                Spacer(minLength: 0)
-                plus.help(addHelp).onHover { ui.hover("add-" + title, $0) }
-            }
-            .padding(.leading, 6).padding(.bottom, 2)
-            content()
-            Spacer(minLength: 0)
-        }
-        .padding(6)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.primary.opacity(0.045)))
-    }
-    @ViewBuilder private var plus: some View {
-        let glyph = Image(systemName: "plus").font(.system(size: 10, weight: .semibold))
-            .foregroundStyle(hover ? Color.catAccent : Color.secondary)
-            .frame(width: 20, height: 18)
-            .background(Circle().fill(Color.primary.opacity(hover ? 0.10 : 0)))
-            .contentShape(Rectangle())
-        Button {
-            if menu.isEmpty { add?() } else { PopMenu.show(menu) }
-        } label: { glyph }.buttonStyle(.plain)
-    }
-}
-
-/// A plain AppKit menu at the pointer, for a + that offers a choice (a SwiftUI Menu label ignores the + styling).
-@MainActor private final class PopMenu: NSObject {
-    private let actions: [() -> Void]
-    private init(_ actions: [() -> Void]) { self.actions = actions }
-    @objc private func run(_ item: NSMenuItem) { actions[item.tag]() }
-    static func show(_ items: [(String, () -> Void)]) {
-        let target = PopMenu(items.map { $0.1 }), menu = NSMenu()
-        for (i, it) in items.enumerated() {
-            let m = NSMenuItem(title: it.0, action: #selector(run(_:)), keyEquivalent: "")
-            m.target = target; m.tag = i; menu.addItem(m)
-        }
-        menu.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)   // modal: target lives until it returns
-    }
-}
-
-/// The quiet line a card shows while it has nothing in it.
-private struct Empty: View {
-    let text: String
-    var body: some View {
-        Text(text).font(.system(size: 11)).foregroundStyle(.tertiary).lineLimit(2)
-            .padding(.horizontal, 6).padding(.vertical, 4)
-    }
-}
-
-/// A clickable row inside a card: optional icon, a title, and something small on the right.
-private struct Row<Trailing: View>: View {
-    let key: String, title: String
-    var icon: LaunchIcon? = nil
-    var help: String? = nil
-    @ViewBuilder let trailing: () -> Trailing
-    let action: () -> Void
-    @ObservedObject private var ui = CatMenuUI.shared
-    private var hover: Bool { ui.hovered == key }
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 6) {
-                if let icon { icon }
-                Text(title).font(.system(size: 12)).lineLimit(1).truncationMode(.tail)
-                Spacer(minLength: 2)
-                trailing()
-            }
-            .padding(.vertical, 4).padding(.horizontal, 6)
-            .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(Color.primary.opacity(hover ? 0.10 : 0)))
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain).onHover { ui.hover(key, $0) }
-        .help(help ?? title)
-    }
-}
-
-/// A launch item's icon: the real app icon for an app, a globe for a link.
-private struct LaunchIcon: View {
-    let item: LaunchItem
-    var body: some View {
-        if item.target.hasPrefix("/") {
-            Image(nsImage: NSWorkspace.shared.icon(forFile: item.target)).resizable().frame(width: 15, height: 15)
-        } else {
-            Image(systemName: "globe").font(.system(size: 11)).foregroundStyle(.secondary).frame(width: 15, height: 15)
-        }
     }
 }
 

@@ -6,7 +6,7 @@ import SwiftUI
 // the pin; needs → one small wave when the count goes up, then still;
 // sleeping → slow breathing + a drifting "z". Reduced motion (or snapshots):
 // poses only, no sway/wave/z. Tooltip via .help (native — renders outside the
-// narrow panel); a click opens the web Billing Desk (the Mac pane is gone);
+// narrow panel); a click pets it, a double-click opens Find my cat;
 // a file drop does nothing (intake moved to the web desk).
 // Cat-life (owner, 26 Sep 2026): one TimelineView (.animation, paused while
 // hidden) drives the always-on life layer — breathing ~1.5% on a 3–4 s sine,
@@ -116,15 +116,15 @@ struct CrewView: View {
                 // Nothing appears on hover (owner 27 Sep 2026: "remove the emote layer when I hover"):
                 // the cat stays easy to grab; the emotes live in the right-click menu below.
                 .onHover { h in model.hoveredId = h ? agent.id : nil }
-                // click = pet it (owner 27 Sep 2026) — or catch it mid-run · double-click = the web Billing Desk.
+                // click = pet it (owner 27 Sep 2026) — or catch it mid-run · double-click = Find my cat (owner 13 Oct 2026).
                 // Zoomies moved to the right-click menu. Any autonomous action stops instantly — the click wins.
-                .gesture(TapGesture(count: 2).onEnded { model.stopAction(); CrewPanel.stopLife(); CrewSound.meow(); CrewPanel.openDesk(find: nil) }
+                .gesture(TapGesture(count: 2).onEnded { model.stopAction(); CrewPanel.stopLife(); CrewSound.meow(); CrewPanel.openGame() }
                     .exclusively(before: TapGesture().onEnded {
                         if CrewPanel.zooming { CrewSound.meow(); CrewPanel.catchCat(); return }
                         model.stopAction(); CrewPanel.stopLife()
                         model.pet()
                     }))
-                // a click opens the web desk; moving the mouse ≥ 4 pt while pressed slides the character along the edge
+                // moving the mouse ≥ 4 pt while pressed slides the character along the edge
                 .gesture(DragGesture(minimumDistance: 4)
                     .onChanged { _ in CrewMove.drag() }
                     .onEnded { _ in CrewMove.end() })
@@ -157,7 +157,7 @@ struct CrewView: View {
                         .shadow(color: .black.opacity(0.18), radius: 3, y: 1)
                         .frame(width: R.width * u, height: R.height * u, alignment: CrewLayout.whisperOnRight ? .leading : .trailing)
                         .offset(x: R.minX * u, y: R.minY * u)
-                        .onTapGesture { model.dismissWhisper(); Watcher.openBusiest() }
+                        .onTapGesture { model.dismissWhisper() }
                 }
                 // Say-hi bubble: sits just above-left of the head (≤ 6 pt from the ear)
                 // with a small tail pointing at the cat. Fixed 34×26 so its bounds
@@ -262,7 +262,7 @@ struct CrewView: View {
         switch model.pose {
         case .needs: return "\(n) waiting · \(MailStore.shared.note.isEmpty ? "needs you" : MailStore.shared.note)"
         case .working: return "\(agent.name) · working"
-        case .sleeping: return "\(agent.name) · double-click: \(Launcher.favorite?.name ?? "zoomies")"
+        case .sleeping: return "\(agent.name) · double-click: Find my cat"
         case .reading:
             if let p = model.peek { return "\(agent.name) · reading \(p.who)" }
             return "\(agent.name) · reading…"
