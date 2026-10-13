@@ -13,6 +13,8 @@ A chunky cat (or a hundred) that lives on your Mac.
 - **The multiplier** — right-click → *More cats* → up to 100 cats raining onto your screen. They never block a
   click; only your own cat is pettable.
 - **Pet it** — click for a purr and a happy squint.
+- **On her own** — flip the switch beside *Do something* and your cat does it all by herself while you work: the emotes,
+  walks, zoomies, and climbs up the side of a window. Point at her up there and she loses her grip. Off by default.
 - **Find my cat** — double-click your cat and a little world opens with your cat hiding somewhere in it. Five levels,
   each harder: a kingdom by day; the kingdom again with lookalikes in your own coat, each with one detail wrong (the
   collar, the bell, the glasses, the ears, the tail tip, a spot); a harbour where only its ears peek out; a snowy village

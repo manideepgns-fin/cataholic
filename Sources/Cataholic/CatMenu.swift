@@ -24,7 +24,25 @@ struct CatMenuView: View {
         VStack(alignment: .leading, spacing: 14) {
             header
             VStack(alignment: .leading, spacing: 6) {
-                Heading("Do something")
+                HStack {
+                    Heading("Do something")
+                    Spacer()
+                    // Owner 13 Oct 2026: "let her do all the stuff that in do something" — on her own, like the extra cats.
+                    // Drawn, not an NSSwitch: in this non-activating panel a system switch draws "on" grey, never the accent.
+                    let on = CrewPrefs.onHerOwn
+                    Button { CrewPrefs.setOnHerOwn(!on); tick += 1 } label: {
+                        HStack(spacing: 6) {
+                            Text("On her own").font(.system(size: 11)).foregroundStyle(.secondary)
+                            Capsule().fill(on ? Color.catAccent : Color.secondary.opacity(0.25)).frame(width: 26, height: 15)
+                                .overlay(Circle().fill(.white).shadow(color: .black.opacity(0.2), radius: 0.5, y: 0.5).padding(2),
+                                         alignment: on ? .trailing : .leading)
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("On her own").accessibilityValue(on ? "On" : "Off")
+                    .help("Your cat does these by herself every minute or two while you work: walks, climbs, zoomies")
+                }
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 5), count: 3), spacing: 5) {
                     ForEach(0..<CrewModel.ringActions.count, id: \.self) { i in
                         let (action, name, symbol) = CrewModel.ringActions[i]

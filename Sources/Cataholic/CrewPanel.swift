@@ -75,10 +75,11 @@ enum CrewPanel {
     /// Let go of the cat, or knock it off its perch: it flies with (vx, vy) pt/s (y down), bounces off the
     /// screen sides and the menu bar, and lands on the first floor under it — squash, and one small bounce
     /// when it came down hard. Wide eyes while airborne (CrewView).
-    static func drop(vx: CGFloat = 0, vy: CGFloat = 0, done: (() -> Void)? = nil) {
+    static func drop(vx: CGFloat = 0, vy: CGFloat = 0, through: Int? = nil, done: (() -> Void)? = nil) {
         guard let screen = CrewScreen.home, let start = charTopLeft(screen) else { done?(); return }
         fallTimer?.invalidate()
-        let wins = CrewGravity.windows()
+        climbed = false
+        let wins = CrewGravity.windows().filter { $0.id != through }   // `through`: the perch she was knocked off
         let w = CrewLayout.screenW, feet = CrewGravity.feet
         let minX = screen.frame.minX, maxX = screen.frame.maxX - w
         let ceiling = screen.frame.maxY - screen.visibleFrame.maxY + 2
@@ -251,6 +252,7 @@ enum CrewPanel {
         roam = nil
         if !zooming, let m = model { m.runFacing = 0; m.runPhase = 0; m.runStride = 38 }   // a walk cut short stands up
         fallTimer?.invalidate(); fallTimer = nil; model?.airborne = false                   // caught mid-air
+        climbDir = 0; climbed = false; model?.climbRot = 0                                  // caught mid-climb
         if zooming { caught = true }
         model?.stopAction()
     }
@@ -341,6 +343,122 @@ enum CrewPanel {
         if !hanging, let at = charTopLeft(screen) { top = at.y }
         glide(toLeft: left, toTop: top, dur: 0.9)
     }
+    /// On her own (menu toggle, owner 13 Oct 2026: "make cat running around while i was working"): one time in four the
+    /// cat strolls to a new spot on the floor it stands on (and stays there), or now and then has
+    /// zoomies. Off by default; never in Quiet mode, under Reduce Motion, or over a full-screen app.
+    static func wander() {
+        guard CrewPrefs.onHerOwn, !zooming, lifeTimer == nil, !CrewMove.holding, model?.airborne != true, model?.action == CrewModel.Action.none,
+              !CrewPrefs.quiet, !Fx.reduced, !fullScreenInFront(), let screen = CrewScreen.home, let at = charTopLeft(screen) else { return }
+        let pick = Int.random(in: 0..<3)
+        if hanging || pick == 0 { zoomies(); return }                         // a hanging cat drops first — zoomies does that
+        let wins = CrewGravity.windows(), w = CrewLayout.screenW
+        let fl = CrewGravity.floorBelow(x: at.x + w / 2, fromY: at.y + CrewGravity.feet - 3, in: screen, wins: wins)
+        if pick == 1, climb(at: at, floor: fl, screen: screen, wins: wins) { return }
+        let lo = max(fl.x0, screen.frame.minX, at.x - 360) + 4, hi = min(fl.x1, screen.frame.maxX, at.x + w + 360) - w - 4
+        guard hi - lo > 80 else { return }
+        var x = CGFloat.random(in: lo...hi)
+        if abs(x - at.x) < 60 { x = at.x - lo > hi - at.x ? lo : hi }
+        glide(toLeft: x, toTop: at.y, dur: 1) {
+            settleHome(left: x, top: at.y, screen: screen)                   // where it strolled to is its new spot (perch watched closely)
+        }
+    }
+    /// Something moving her right now (a walk, a leap, a climb, a fall) — the on-her-own scheduler waits for it.
+    static var busy: Bool { lifeTimer != nil || fallTimer != nil || climbDir != 0 }
+    /// Climbing (owner 13 Oct 2026: "climbing on screen, when i point cursor on it it falls from there"): she walks to
+    /// the side of a nearby window and climbs its edge — the side-on runner turned upright against the wall, paws
+    /// stepping in small pulls — then hops onto its top, her new spot. Standing on the Dock line with no window to
+    /// climb, she climbs the nearer screen edge back up to her pin (zoomies take her off it). False: nothing to climb.
+    private static var climbDir: CGFloat = 0           // mid-climb: 1 = the wall is on her right · -1 on her left
+    private(set) static var climbed = false            // up high by herself — the pointer can knock her off (slip)
+    private static func climb(at: CGPoint, floor fl: CrewGravity.Floor, screen: NSScreen,
+                              wins: [(id: Int, rect: CGRect)]) -> Bool {
+        let w = CrewLayout.screenW, z = CrewLayout.zoom, feet = CrewGravity.feet, feetY = at.y + feet
+        let gap = 12 * z                                // box centre → wall: the upright body's back against the edge
+        var best: (base: CGFloat, land: CGFloat, top: CGFloat, dir: CGFloat)? = nil
+        for win in wins {
+            let r = win.rect
+            guard r.minY < feetY - 60, r.maxY >= feetY - 4 else { continue }   // taller than her, its side reaches her floor
+            for (edge, dir) in [(r.minX, CGFloat(1)), (r.maxX, CGFloat(-1))] {
+                let base = edge - dir * gap - w / 2, land = dir > 0 ? r.minX + 6 : r.maxX - w - 6
+                guard base + w / 2 > fl.x0, base + w / 2 < fl.x1, base >= screen.frame.minX, base + w <= screen.frame.maxX,
+                      abs(base - at.x) < 420,
+                      CrewGravity.floorBelow(x: land + w / 2, fromY: r.minY - 0.5, in: screen, wins: wins).window == win.id
+                else { continue }
+                if best == nil || abs(base - at.x) < abs(best!.base - at.x) { best = (base, land, r.minY, dir) }
+            }
+        }
+        if let b = best {
+            glide(toLeft: b.base, toTop: at.y, dur: 1) {
+                climbWall(left: b.base, to: b.top - feet + 2 * z, dir: b.dir) {   // head over the top edge…
+                    glide(toLeft: b.land, toTop: b.top - feet, dur: 0.4, hop: 10 * Double(z)) {   // …and a hop onto it
+                        settleHome(left: b.land, top: b.top - feet, screen: screen)
+                        climbed = true
+                    }
+                }
+            }
+            return true
+        }
+        guard fl.window == nil else { return false }   // up the screen edge to the pin — only from the Dock line
+        let right = at.x + w / 2 > screen.frame.midX, dir: CGFloat = right ? 1 : -1
+        let base = right ? screen.frame.maxX - w / 2 - gap : screen.frame.minX - w / 2 + gap
+        let hangTop: CGFloat = 64                       // CrewMove.top's default: the pin under the menu bar
+        glide(toLeft: base, toTop: at.y, dur: 1) {
+            climbWall(left: base, to: hangTop, dir: dir) {
+                settleHome(left: base, top: hangTop, screen: screen)
+                if right { UserDefaults.standard.removeObject(forKey: "crewLeft") }   // docked, as at first launch
+                setHanging(true)
+                climbed = true
+                panel?.refit()
+                model?.land(0.85)
+            }
+        }
+        return true
+    }
+    /// The climb itself: up the wall at `left` to box top `top1`, one 60 Hz timer only while she climbs. The pointer
+    /// on her makes her let go (slip).
+    private static func climbWall(left: CGFloat, to top1: CGFloat, dir: CGFloat, done: @escaping () -> Void) {
+        guard let p = panel, let m = model, let screen = CrewScreen.home, let at = charTopLeft(screen) else { return }
+        lifeTimer?.invalidate()
+        climbDir = dir
+        m.runFacing = dir > 0 ? 1 : -1; m.runStride = 22; m.runSpeed = 0; m.runGait = 0; m.runLean = 0
+        m.climbRot = -90 * Double(dir)                  // head up, belly to the wall
+        let z = CrewLayout.zoom
+        var y = at.y, t = 0.0, last = Date()
+        lifeTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60, repeats: true) { timer in
+            MainActor.assumeIsolated {
+                let now = Date(), dt = min(now.timeIntervalSince(last), 1.0 / 30); last = now; t += dt
+                let v = 160 * (0.2 + 0.8 * max(0, sin(t * 2 * .pi * 1.5)))        // small pulls, ~70 pt/s
+                y = max(top1, y - CGFloat(v * dt))
+                m.runPhase += v * dt / Double(z) / 3
+                roam = (left, y)
+                p.refit()
+                if p.charRect().insetBy(dx: 6 * z, dy: 6 * z).contains(NSEvent.mouseLocation) { slip(); return }
+                if y <= top1 {
+                    timer.invalidate(); lifeTimer = nil; climbDir = 0
+                    m.runFacing = 0; m.runPhase = 0; m.runStride = 38; m.climbRot = 0
+                    done()
+                }
+            }
+        }
+    }
+    /// The pointer on a cat that climbed up by herself (on her own only): she loses her grip and falls — off the wall,
+    /// off the pin, or straight off the front of the window she sits on. A cat you put somewhere stays put.
+    static func slip() {
+        guard CrewPrefs.onHerOwn, climbDir != 0 || climbed, !zooming, !CrewMove.holding, model?.airborne != true,
+              !CrewPrefs.quiet, !Fx.reduced, let m = model, let screen = CrewScreen.home, let at = charTopLeft(screen) else { return }
+        if climbDir != 0 {                                                   // mid-wall: pushed off it
+            let dir = climbDir
+            lifeTimer?.invalidate(); lifeTimer = nil; climbDir = 0
+            m.runFacing = 0; m.runPhase = 0; m.runStride = 38; m.climbRot = 0
+            drop(vx: -150 * dir, vy: -80)
+            return
+        }
+        guard lifeTimer == nil, m.action == .none else { return }
+        if hanging { setHanging(false); drop(vy: -60); return }
+        let fl = CrewGravity.floorBelow(x: at.x + CrewLayout.screenW / 2, fromY: at.y + CrewGravity.feet - 3,
+                                        in: screen, wins: CrewGravity.windows())
+        drop(vx: .random(in: -70...70), vy: -220, through: fl.window)        // a startled hop, then down
+    }
     /// Something new is waiting (owner 29 Sep 2026: "the cat, wherever it is, bumps and says you have a new
     /// notification… and goes back"): two quick hops on the spot, straight back to where it sat — no trip across the
     /// screen — while the whisper shows. A cat with no headroom (hanging right under the menu bar) squishes twice
@@ -363,7 +481,7 @@ enum CrewPanel {
         }
     }
     /// A window of another app covering the whole screen (a full-screen app, a slideshow).
-    private static func fullScreenInFront() -> Bool {
+    static func fullScreenInFront() -> Bool {
         guard let screen = CrewScreen.home,
               let wins = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]]
         else { return false }

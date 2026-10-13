@@ -26,6 +26,7 @@ final class CrewModel: ObservableObject {
     @Published var runLean: Double = 0         // zoomies: + leans into the scramble, − leans back in a skid
     @Published var runSpeed: Double = 0        // zoomies: 0 … 1 of top speed (speed lines, dust) — set per frame with runPhase
     @Published var runGait = 0                 // zoomies: 0 run · 1 scramble · 2 skid
+    @Published var climbRot: Double = 0        // climbing (CrewPanel.climb): ±90° turns the runner upright against the wall
     @Published var airborne = false            // falling / flung (CrewPanel.drop): wide eyes, no pin
     @Published var squash: CGFloat = 1         // landing squish: < 1 = squashed flat (springs back to 1)
     @Published var petUntil = Date.distantPast // petted: "^ ^" eyes until then
@@ -217,12 +218,12 @@ final class CrewModel: ObservableObject {
             || (CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: .keyDown) < 2)
     }
 
-    private func scheduleNext(initial: Bool = false) {
+    func scheduleNext(initial: Bool = false) {
         schedWork?.cancel()
-        // Weighted mean ~6 min (180–540 s), always ≥ 90 s after the last action.
-        var wait = Double.random(in: 180...540)
-        if initial { wait = Double.random(in: 60...180) }
-        wait = max(wait, Tune.minGap - Date().timeIntervalSince(lastActionAt))
+        // Weighted mean ~6 min (180–540 s), always ≥ 90 s after the last action. On her own: something every 40–120 s (≥ 40 s apart).
+        var wait = CrewPrefs.onHerOwn ? Double.random(in: 40...120) : Double.random(in: 180...540)
+        if initial && !CrewPrefs.onHerOwn { wait = Double.random(in: 60...180) }
+        wait = max(wait, (CrewPrefs.onHerOwn ? 40 : Tune.minGap) - Date().timeIntervalSince(lastActionAt))
         let w = DispatchWorkItem { [weak self] in
             Task { @MainActor in
                 self?.fireNext()
@@ -234,6 +235,17 @@ final class CrewModel: ObservableObject {
     }
 
     private func fireNext() {
+        // On her own: one of the nine "Do something" actions, or a walk / climb / zoomies (one time in three). Hi at most every 30 min.
+        // Silent, like every life action (owner 27 Sep 2026: sounds "only when you interact"); never while you hold her,
+        // mid-fall, hidden, or over a full-screen app / slideshow.
+        if CrewPrefs.onHerOwn, CrewPrefs.showCrew, !lifeOff, action == .none, !ringOpen, !CrewPanel.zooming, !airborne,
+           !CrewPanel.busy, !CrewMove.holding, macIdle() < Tune.idleGrace, !CrewPanel.fullScreenInFront() {
+            if Int.random(in: 0..<3) == 0 { CrewPanel.wander(); return }
+            let hiOK = Date().timeIntervalSince(lastHiAt) > 1800
+            let pick = Self.ringActions.map(\.0).filter { $0 != .hi || hiOK }.randomElement() ?? .look
+            startAction(pick)
+            return
+        }
         guard Tune.autonomous, !lifeOff, action == .none, !ringOpen, !CrewPanel.zooming else { return }
         guard macIdle() < Tune.idleGrace else { return }   // Mac in use only
         let hiOK = Date().timeIntervalSince(lastHiAt) > 1800
@@ -444,6 +456,12 @@ enum CrewPrefs {
         UserDefaults.standard.set(on, forKey: "crewQuiet")
         CrewPanel.applyPrefs()
         CrewHerd.shared.restart()                  // quiet mode sends the herd home
+    }
+    /// On her own: the cat does the "Do something" actions and walks about while you work (menu toggle, off by default).
+    static var onHerOwn: Bool { UserDefaults.standard.bool(forKey: "crewOnHerOwn") }
+    static func setOnHerOwn(_ on: Bool) {
+        UserDefaults.standard.set(on, forKey: "crewOnHerOwn")
+        CrewPanel.currentModel()?.scheduleNext(initial: true)   // on: the first one within 40–120 s
     }
 }
 

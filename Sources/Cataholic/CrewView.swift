@@ -104,6 +104,7 @@ struct CrewView: View {
                     .rotationEffect(.degrees(f.rot * facing), anchor: feet)
                     .rotationEffect(.degrees(tilt),
                                     anchor: running ? .center : UnitPoint(x: 0.5, y: 2 / 62))
+                    .rotationEffect(.degrees(running ? model.climbRot : 0))         // climbing: upright against the wall
                     // the side-on runner touches both edges of its box; 7 % smaller it can lean into a scramble or a skid
                     // without its tail, whiskers or dust being cut off by the panel (which stays the 46×62 box while running)
                     .scaleEffect(running ? 0.93 : 1)
@@ -115,7 +116,7 @@ struct CrewView: View {
                 .animation(Fx.reduced ? nil : .spring(response: 0.28, dampingFraction: 0.42), value: model.squash)
                 // Nothing appears on hover (owner 27 Sep 2026: "remove the emote layer when I hover"):
                 // the cat stays easy to grab; the emotes live in the right-click menu below.
-                .onHover { h in model.hoveredId = h ? agent.id : nil }
+                .onHover { h in model.hoveredId = h ? agent.id : nil; if h { CrewPanel.slip() } }   // on her own: knocked off a perch
                 // click = pet it (owner 27 Sep 2026) — or catch it mid-run · double-click = Find my cat (owner 13 Oct 2026).
                 // Zoomies moved to the right-click menu. Any autonomous action stops instantly — the click wins.
                 .gesture(TapGesture(count: 2).onEnded { model.stopAction(); CrewPanel.stopLife(); CrewSound.meow(); CrewPanel.openGame() }
