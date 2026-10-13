@@ -2,3 +2,6 @@
 dist/
 *.dmg
 .DS_Store
+# launch videos stay out of the repo; docs/ keeps only the GIF and stills
+*.mov
+*.mp4

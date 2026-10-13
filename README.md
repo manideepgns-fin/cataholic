@@ -2,6 +2,8 @@
 
 A chunky cat (or a hundred) that lives on your Mac.
 
+![Cataholic waving hi, then off on the zoomies](docs/cataholic-loop.gif)
+
 ![The eight Cataholic cats, sitting and napping](docs/cats.png)
 
 - **Eight coats** — Ginger (in reading glasses), Smokey, Patches, Tux, Butter, Cocoa, Snow, Lilac.
@@ -31,8 +33,13 @@ A chunky cat (or a hundred) that lives on your Mac.
   wallpaper (dark over light patches, light over dark), the window casts a faint band across the screen on all four
   sides, and the edges of nearby windows show up as blue guides. Land an edge or the centre on a line and it glows
   mint, and a Force Touch trackpad gives a small tap. No permission needed.
+  ![A window snapping onto the grid; the lines under its edges glow mint](docs/grid.png)
 - **One menu** — right-click the cat or click the paw: your cat and its coats up top, the emotes as a grid,
-  switches like Control Center, and *Waiting for you* / *Quick launch* side by side.
+  switches like Control Center, and *Waiting for you* / *Quick launch* side by side. It takes its colour from the cat
+  you pick — Ginger orange, Smokey slate, Patches terracotta, Tux blue, Butter gold, Cocoa brown, Snow ice blue, Lilac lavender.
+  ![The menu in lilac beside the lilac cat](docs/menu.png)
+- **Emotes that perform** — each one winds up, plays and settles: a mitten-paw wave, grooming with toe beans, a
+  curled-up nap with drifting z's, and zoomies with dust, skids and a proud squint at the end.
 - **Light as a feather** — at rest the cat is one still picture: ~0% CPU, ~30 MB. It only animates when it moves.
 - Naps melted flat when you're away. Quiet mode and Reduce Motion calm everything down.
 

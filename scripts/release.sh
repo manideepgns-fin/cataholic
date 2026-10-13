@@ -16,6 +16,13 @@ if [[ "${DRY:-}" != 1 ]]; then
   [[ "$(git rev-parse HEAD)" == "$(git rev-parse origin/main)" ]] || { echo "STOP: HEAD is not origin/main — push first" >&2; exit 1; }
 fi
 
+# The notary login lives in the keychain and has vanished once (13 Oct 2026, between two releases an hour apart) —
+# check it before a 2-minute build instead of after.
+xcrun notarytool history --keychain-profile "${NOTARY_PROFILE:-cataholic-notary}" >/dev/null 2>&1 || {
+  echo "STOP: notary login missing. Make an app-specific password (appleid.apple.com → Sign-In and Security →" >&2
+  echo "      App-Specific Passwords), then run in a normal Terminal:" >&2
+  echo "      xcrun notarytool store-credentials cataholic-notary --team-id RCZPRL6BS4 --apple-id <your Apple ID>" >&2
+  exit 1; }
 scripts/build.sh
 scripts/notarize.sh
 ZIP="$ROOT/dist/Cataholic-$V.zip"; FEED="$ROOT/dist/feed-$V"
