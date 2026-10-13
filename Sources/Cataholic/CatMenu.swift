@@ -41,7 +41,7 @@ struct CatMenuView: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("On her own").accessibilityValue(on ? "On" : "Off")
-                    .help("Your cat does these by herself every minute or two while you work: walks, climbs, zoomies")
+                    .help("Your cat does these by herself every few seconds while you work: walks, climbs, zoomies")
                 }
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 5), count: 3), spacing: 5) {
                     ForEach(0..<CrewModel.ringActions.count, id: \.self) { i in

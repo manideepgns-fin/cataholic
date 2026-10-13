@@ -220,10 +220,11 @@ final class CrewModel: ObservableObject {
 
     func scheduleNext(initial: Bool = false) {
         schedWork?.cancel()
-        // Weighted mean ~6 min (180–540 s), always ≥ 90 s after the last action. On her own: something every 40–120 s (≥ 40 s apart).
-        var wait = CrewPrefs.onHerOwn ? Double.random(in: 40...120) : Double.random(in: 180...540)
-        if initial && !CrewPrefs.onHerOwn { wait = Double.random(in: 60...180) }
-        wait = max(wait, (CrewPrefs.onHerOwn ? 40 : Tune.minGap) - Date().timeIntervalSince(lastActionAt))
+        // Weighted mean ~6 min (180–540 s), always ≥ 90 s after the last action. On her own: something every 10–20 s, and
+        // the first one right away (owner 13 Oct 2026: "it can be every 10 or 20 seconds … it needs to keep doing something").
+        var wait = CrewPrefs.onHerOwn ? Double.random(in: 10...20) : Double.random(in: 180...540)
+        if initial { wait = CrewPrefs.onHerOwn ? 1 : Double.random(in: 60...180) }
+        if !CrewPrefs.onHerOwn { wait = max(wait, Tune.minGap - Date().timeIntervalSince(lastActionAt)) }
         let w = DispatchWorkItem { [weak self] in
             Task { @MainActor in
                 self?.fireNext()
@@ -235,12 +236,13 @@ final class CrewModel: ObservableObject {
     }
 
     private func fireNext() {
-        // On her own: one of the nine "Do something" actions, or a walk / climb / zoomies (one time in three). Hi at most every 30 min.
+        // On her own: a walk / climb / zoomies half the time, else one of the nine "Do something" actions — and when there is
+        // nowhere to move, an action instead, so no turn is wasted. Hi at most every 30 min.
         // Silent, like every life action (owner 27 Sep 2026: sounds "only when you interact"); never while you hold her,
         // mid-fall, hidden, or over a full-screen app / slideshow.
         if CrewPrefs.onHerOwn, CrewPrefs.showCrew, !lifeOff, action == .none, !ringOpen, !CrewPanel.zooming, !airborne,
            !CrewPanel.busy, !CrewMove.holding, macIdle() < Tune.idleGrace, !CrewPanel.fullScreenInFront() {
-            if Int.random(in: 0..<3) == 0 { CrewPanel.wander(); return }
+            if Bool.random(), CrewPanel.wander() { return }
             let hiOK = Date().timeIntervalSince(lastHiAt) > 1800
             let pick = Self.ringActions.map(\.0).filter { $0 != .hi || hiOK }.randomElement() ?? .look
             startAction(pick)
@@ -461,7 +463,7 @@ enum CrewPrefs {
     static var onHerOwn: Bool { UserDefaults.standard.bool(forKey: "crewOnHerOwn") }
     static func setOnHerOwn(_ on: Bool) {
         UserDefaults.standard.set(on, forKey: "crewOnHerOwn")
-        CrewPanel.currentModel()?.scheduleNext(initial: true)   // on: the first one within 40–120 s
+        CrewPanel.currentModel()?.scheduleNext(initial: true)   // on: the first one right away
     }
 }
 

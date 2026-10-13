@@ -346,21 +346,23 @@ enum CrewPanel {
     /// On her own (menu toggle, owner 13 Oct 2026: "make cat running around while i was working"): one time in four the
     /// cat strolls to a new spot on the floor it stands on (and stays there), or now and then has
     /// zoomies. Off by default; never in Quiet mode, under Reduce Motion, or over a full-screen app.
-    static func wander() {
+    /// False: nothing to do from here (no room to walk, nothing to climb) — the caller does an action instead.
+    @discardableResult static func wander() -> Bool {
         guard CrewPrefs.onHerOwn, !zooming, lifeTimer == nil, !CrewMove.holding, model?.airborne != true, model?.action == CrewModel.Action.none,
-              !CrewPrefs.quiet, !Fx.reduced, !fullScreenInFront(), let screen = CrewScreen.home, let at = charTopLeft(screen) else { return }
+              !CrewPrefs.quiet, !Fx.reduced, !fullScreenInFront(), let screen = CrewScreen.home, let at = charTopLeft(screen) else { return false }
         let pick = Int.random(in: 0..<3)
-        if hanging || pick == 0 { zoomies(); return }                         // a hanging cat drops first — zoomies does that
+        if hanging || pick == 0 { zoomies(); return true }                    // a hanging cat drops first — zoomies does that
         let wins = CrewGravity.windows(), w = CrewLayout.screenW
         let fl = CrewGravity.floorBelow(x: at.x + w / 2, fromY: at.y + CrewGravity.feet - 3, in: screen, wins: wins)
-        if pick == 1, climb(at: at, floor: fl, screen: screen, wins: wins) { return }
+        if pick == 1, climb(at: at, floor: fl, screen: screen, wins: wins) { return true }
         let lo = max(fl.x0, screen.frame.minX, at.x - 360) + 4, hi = min(fl.x1, screen.frame.maxX, at.x + w + 360) - w - 4
-        guard hi - lo > 80 else { return }
+        guard hi - lo > 80 else { return climb(at: at, floor: fl, screen: screen, wins: wins) }   // no room to walk: climb
         var x = CGFloat.random(in: lo...hi)
         if abs(x - at.x) < 60 { x = at.x - lo > hi - at.x ? lo : hi }
         glide(toLeft: x, toTop: at.y, dur: 1) {
             settleHome(left: x, top: at.y, screen: screen)                   // where it strolled to is its new spot (perch watched closely)
         }
+        return true
     }
     /// Something moving her right now (a walk, a leap, a climb, a fall) — the on-her-own scheduler waits for it.
     static var busy: Bool { lifeTimer != nil || fallTimer != nil || climbDir != 0 }
