@@ -48,6 +48,11 @@ struct CrewCharacter: View {
     var mouthOpen: CGFloat = 1      // yawn: 0 shut … 1 wide
     var earsBack: CGFloat = 0       // 0 up … 1 flattened back
     var eyes: CrewEyes? = nil       // an emote's eye override
+    var pawWrist: Double = 0        // hi / groom: the mitten's bend at the wrist (deg) — lags the arm, flicks at the end
+    var napBreath: CGFloat = 0      // nap: the curled body rising (1) and falling (0)
+    var napPeek = false             // nap: one eye peeks open before it wakes
+    var runSpeed: Double = 0        // zoomies: 0 … 1 of top speed (speed lines, dust)
+    var runGait = 0                 // zoomies: 0 run · 1 scramble (feet spinning in place) · 2 skid
 
     // The cat (owner 25 Sep 2026: "and cat please") — a ginger tabby, original drawing.
     // The coat (owner 27 Sep 2026: "3 4 styles of cats … we are officially cataholic"): the soft, lazy flat-vector
@@ -81,6 +86,7 @@ struct CrewCharacter: View {
             // a body on short stubby legs, a big round head overlapping it. A walk is a diagonal gait with
             // the tail up; a gallop bounds, tail streaming, the body stretching and squashing each stride.
             let walk = stride < 30
+            let runPhase = runGait == 2 ? 0.9 : self.runPhase      // a skid holds its legs braced; the dust keeps the real phase
             let swing = sin(runPhase) * stride, swing2 = sin(runPhase + (walk ? .pi : 0.7)) * stride
             func leg(_ hip: CGPoint, _ deg: Double, _ c: Color) {
                 let a = deg * .pi / 180, L: CGFloat = 5.5
@@ -90,9 +96,29 @@ struct CrewCharacter: View {
                 F(&ctx, oval(foot.x - 2.6, foot.y - 1.4, 5.2, 3), cream, s)
             }
             let bob = CGFloat(abs(sin(runPhase))) * (walk ? 0.8 : 1.4)
+            // Speed (owner 13 Oct 2026: zoomies "we can do better"): speed lines and dust drawn behind/under the cat first.
+            let fast = !walk && runGait == 0 ? CGFloat(min(max(runSpeed, 0), 1)) : 0
+            if fast > 0.35 {
+                for (y, l) in [(20.5, 1.0), (40.5, 0.75), (44.5, 0.55)] as [(CGFloat, CGFloat)] {
+                    var sl = Path(); sl.move(to: P(1.5, y)); sl.addLine(to: P(1.5 + 7 * l * fast, y))
+                    ctx.stroke(sl, with: .color(line.opacity(0.45 * Double(fast))), style: StrokeStyle(lineWidth: 1.1 * s, lineCap: .round))
+                }
+            }
+            func puff(_ x: CGFloat, _ y: CGFloat, _ r: CGFloat, _ a: Double) {
+                let c = Path(ellipseIn: CGRect(x: (x - r) * s, y: (y - r) * s, width: 2 * r * s, height: 2 * r * s))
+                ctx.fill(c, with: .color(Color(red: 0.86, green: 0.82, blue: 0.76).opacity(a)))
+                ctx.stroke(c, with: .color(line.opacity(a * 0.5)), lineWidth: 0.6 * s)
+            }
+            if !walk && (runGait != 0 || fast > 0.5) {
+                for i in 0..<3 {                                   // little dust puffs kicked up, drifting back and fading
+                    let u = CGFloat((self.runPhase / (2 * .pi) * (runGait == 1 ? 1.5 : 1) + Double(i) / 3).truncatingRemainder(dividingBy: 1))
+                    if runGait == 2 { puff(33 + u * 6, 48.5 - u * 3, 1.4 + u * 1.6, Double(1 - u) * 0.85) }   // skid: sprays ahead of the braced paws
+                    else { puff(10 - u * 6, 48.5 - u * 3, 1.2 + u * 1.6, Double(1 - u) * 0.8) }
+                }
+            }
             ctx.translateBy(x: 0, y: -bob * s)
             if !walk && runPhase != 0 {               // gallop: stretch on the reach, squash on the gather
-                let k = CGFloat(sin(runPhase * 2)) * 0.06
+                let k = CGFloat(sin(runPhase * 2)) * (runGait == 2 ? 0.02 : 0.1)   // stretch on the reach, gather on the tuck
                 ctx.translateBy(x: P(20, 48).x, y: P(20, 48).y)
                 ctx.scaleBy(x: 1 + k, y: 1 - k)
                 ctx.translateBy(x: -P(20, 48).x, y: -P(20, 48).y)
@@ -109,6 +135,11 @@ struct CrewCharacter: View {
             }
             T(&ctx, tail, 4.6, fur, s)
             F(&ctx, oval(3, 23, 33, 24), fur, s)                            // the barrel
+            // the coat runs too (owner 13 Oct 2026: Patches went plain white mid-zoomies): the sitting patches, mapped
+            // onto the side-on barrel and head
+            spots(&ctx, clip: oval(3, 23, 33, 24), s, head: false, from: coat.patches.filter { $0.1.minY >= 26 }.map { (c, r) in
+                (c, CGRect(x: 3 + (r.minX - 10.5) * 33 / 25, y: 23 + (r.minY - 28.5) * 24 / 21, width: r.width * 33 / 25, height: r.height * 24 / 21))
+            })
             ctx.fill(oval(8.5, 38.5, 22, 7.5), with: .color(cream))         // belly
             for (x, y) in [(11.5, 24.2), (16.5, 23.4), (21.5, 23.6)] as [(CGFloat, CGFloat)] {
                 var st = Path(); st.move(to: P(x, y)); st.addQuadCurve(to: P(x - 1.2, y + 5), control: P(x + 0.6, y + 2.8))
@@ -116,13 +147,17 @@ struct CrewCharacter: View {
             }
             leg(back, swing, fur); leg(front, -swing, fur)                  // near legs over the body
             // Head: ears (far one shaded), a big round head, muzzle
-            var earB = Path(); earB.move(to: P(25.5, 18)); earB.addQuadCurve(to: P(27.5, 8), control: P(24.5, 11)); earB.addQuadCurve(to: P(32.5, 14), control: P(30.5, 9.5)); earB.closeSubpath()
-            F(&ctx, earB, shade, s)
-            var earF = Path(); earF.move(to: P(32, 15)); earF.addQuadCurve(to: P(36, 6.5), control: P(32, 9)); earF.addQuadCurve(to: P(41, 14.5), control: P(39.5, 8.5)); earF.closeSubpath()
-            F(&ctx, earF, fur, s)
-            var inF = Path(); inF.move(to: P(34, 13.5)); inF.addLine(to: P(36, 9)); inF.addLine(to: P(38.8, 13.5)); inF.closeSubpath()
+            let flat: CGFloat = !walk && runGait != 2 && runPhase != 0 ? 1 : 0     // ears pinned back at a gallop, up in a skid
+            var earB = Path(); earB.move(to: P(25.5, 18)); earB.addQuadCurve(to: P(27.5 - 4 * flat, 8 + 3.5 * flat), control: P(24.5, 11)); earB.addQuadCurve(to: P(32.5, 14), control: P(30.5, 9.5 + 2 * flat)); earB.closeSubpath()
+            F(&ctx, earB, coat.earL ?? shade, s)
+            var earF = Path(); earF.move(to: P(32, 15)); earF.addQuadCurve(to: P(36 - 5 * flat, 6.5 + 4 * flat), control: P(32, 9)); earF.addQuadCurve(to: P(41, 14.5), control: P(39.5, 8.5 + 2.5 * flat)); earF.closeSubpath()
+            F(&ctx, earF, coat.earR ?? fur, s)
+            var inF = Path(); inF.move(to: P(34, 13.5)); inF.addLine(to: P(36 - 3.5 * flat, 9 + 3 * flat)); inF.addLine(to: P(38.8, 13.5)); inF.closeSubpath()
             ctx.fill(inF, with: .color(pink))
             F(&ctx, oval(22.5, 12.5, 21.5, 20.5), fur, s)
+            spots(&ctx, clip: oval(22.5, 12.5, 21.5, 20.5), s, head: true, from: coat.patches.filter { $0.1.minY < 26 }.map { (c, r) in
+                (c, CGRect(x: 22.5 + (r.minX - 7) * 21.5 / 32, y: 12.5 + (r.minY - 10.5) * 20.5 / 21.5, width: r.width * 21.5 / 32, height: r.height * 20.5 / 21.5))
+            })
             for (x, y) in [(28.5, 13.6), (31.5, 13.2)] as [(CGFloat, CGFloat)] {
                 var st = Path(); st.move(to: P(x, y)); st.addLine(to: P(x + 0.4, y + 3.2))
                 ctx.stroke(st, with: .color(stripe), style: StrokeStyle(lineWidth: 1.5 * s, lineCap: .round))
@@ -168,7 +203,8 @@ struct CrewCharacter: View {
                 // take-off crouch before the leap is drawn below, front-on.
                 if state == .jump && !jumpCrouch { leap(ctx: &ctx, P: P, oval: oval, s: s); return }
                 if state == .stretch { bow(ctx: &ctx, P: P, oval: oval, s: s); return }
-                if (state == .sleeping || state == .nap) && !pin { melt(ctx: &ctx, P: P, oval: oval, s: s); return }
+                if state == .nap && !pin { curl(ctx: &ctx, P: P, oval: oval, s: s); return }
+                if state == .sleeping && !pin { melt(ctx: &ctx, P: P, oval: oval, s: s); return }
                 // Pin + string (the grown cat, the crouching cat and the ring step off it)
                 if pin && state != .big && state != .jump {
                     ctx.stroke(Path { p in p.move(to: P(23, 0)); p.addLine(to: P(23, 8)) },
@@ -332,16 +368,13 @@ struct CrewCharacter: View {
                     F(&ctx, oval(28, 38, 6.5, 5), fur, s)
                 }
                 if state == .hi && pawRaise > 0.12 {
-                    // wave: the arm swings up from the side (pawRaise) and waves (pawWave); at 1 / 0 it is the old raised paw
-                    let r = min(pawRaise, 1.2)       // tucked short at the side → full reach overhead (a little past at the top)
-                    let th = (110 + (31 - 110) * Double(r) + pawWave) * .pi / 180     // from straight up, + = out to the left
-                    let dx = CGFloat(-sin(th)), dy = CGFloat(-cos(th)), L: CGFloat = 16.4 * (0.35 + 0.65 * min(r, 1))
-                    let end = CGPoint(x: 17 + dx * L, y: 36 + dy * L)
-                    let elbow = CGPoint(x: 17 + dx * L / 2 - CGFloat(cos(th)) * 2.1, y: 36 + dy * L / 2 + CGFloat(sin(th)) * 2.1)
-                    var paw = Path()
-                    paw.move(to: P(17, 36)); paw.addQuadCurve(to: P(end.x, end.y), control: P(elbow.x, elbow.y))
-                    T(&ctx, paw, 3, fur, s)
-                    F(&ctx, oval(end.x + dx * 1.7 - 2.2, end.y + dy * 1.7 - 1.8, 4.4, 3.6), cream, s)
+                    // wave (owner 13 Oct 2026: the paw read as "a thin stick"): a soft round arm and a mitten paw on
+                    // a clear arc. pawRaise swings it up from a tuck at the side; pawWave waves it; pawWrist lags behind.
+                    let r = min(pawRaise, 1.2)
+                    let th = (110 + (33 - 110) * Double(r) + pawWave) * .pi / 180     // from straight up, + = out to the left
+                    let L: CGFloat = 12.5 * (0.4 + 0.6 * min(r, 1))
+                    let end = CGPoint(x: 17.5 - CGFloat(sin(th)) * L, y: 35 - CGFloat(cos(th)) * L)
+                    mitten(&ctx, P: P, s: s, from: CGPoint(x: 17.5, y: 35), to: end, bend: 2.4, wrist: pawWrist)
                 }
                 if state == .needs {
                     // A paw holds the sign up on the LEFT (the side facing into the screen)
@@ -361,22 +394,28 @@ struct CrewCharacter: View {
                     }
                 }
                 if state == .groom, let g = groomPaw, hypot(g.x - 29, g.y - 36) > 2 {
-                    // a paw lifted to the mouth for the mid-lick (at the default point it is the old still)
-                    var paw = Path()
-                    paw.move(to: P(29, 36)); paw.addQuadCurve(to: P(g.x, g.y), control: P((29 + g.x) / 2 + 1.25, (36 + g.y) / 2))
-                    T(&ctx, paw, 3, fur, s)
-                    F(&ctx, oval(g.x - 2.1, g.y - 3.1, 4.2, 3.4), cream, s)
+                    // the same mitten, lifted to the mouth for the lick and the face wipe: the paw lands on `g`
+                    let d = hypot(g.x - 28.5, g.y - 35), k = max(0, d - 2.6) / max(d, 0.01)
+                    let end = CGPoint(x: 28.5 + (g.x - 28.5) * k, y: 35 + (g.y - 35) * k)
+                    mitten(&ctx, P: P, s: s, from: CGPoint(x: 28.5, y: 35), to: end, bend: -1.8, wrist: pawWrist)
                 }
             }
             .frame(width: 46 * CrewLayout.zoom, height: 62 * CrewLayout.zoom)
             .offset(y: breatheY)
             if state == .nap && zLift.1 > 0 {
-                // the nap's z drifts up off the head: the melted head (bottom left) or the dozing head on the pin
-                let (zx, zy): (CGFloat, CGFloat) = pin ? (34 + zLift.0 * 0.5, 12 - zLift.0) : (17 + zLift.0 * 0.5, 27 - zLift.0)
-                Text("z")
-                    .font(.system(size: 10 * CrewLayout.zoom, weight: .semibold, design: .monospaced))
-                    .foregroundStyle(Color(nsColor: .secondaryLabelColor).opacity(zLift.1))
-                    .offset(x: zx * CrewLayout.zoom, y: zy * CrewLayout.zoom)
+                // the nap's z's drift up off the head — ink-dark with a paper halo, so they read on light AND dark
+                // desktops (owner 13 Oct 2026: the grey z was faint). A second, smaller z follows half a breath behind.
+                let (zx, zy, drift): (CGFloat, CGFloat, CGFloat) = pin ? (36, 16, 0.3) : (27, 24, 0.55)   // clear of the ear
+                ForEach(0..<2, id: \.self) { k in
+                    let rise = max(0, zLift.0 - CGFloat(k) * 5), op = k == 0 ? zLift.1 : (zLift.0 > 5 ? zLift.1 : 0)
+                    Text("z")
+                        .font(.system(size: (k == 0 ? 9 : 7) * CrewLayout.zoom, weight: .heavy, design: .rounded))
+                        .foregroundStyle(Color(red: 0.24, green: 0.26, blue: 0.45))
+                        .shadow(color: Color(red: 1, green: 0.98, blue: 0.94), radius: 1.2)
+                        .shadow(color: Color(red: 1, green: 0.98, blue: 0.94), radius: 1.2)
+                        .opacity(op)
+                        .offset(x: (zx + rise * drift + CGFloat(k) * 2) * CrewLayout.zoom, y: (zy - rise) * CrewLayout.zoom)
+                }
             }
             if state == .sleeping {
                 Text("z")
@@ -386,6 +425,67 @@ struct CrewCharacter: View {
             }
         }
         .frame(width: 46 * CrewLayout.zoom, height: 62 * CrewLayout.zoom)
+    }
+
+    /// A chunky arm and a round mitten paw (owner 13 Oct 2026): a soft fur arm as thick as the haunch line, ending in a
+    /// cream mitten with a pink pad and three toe beans, turned along the arm plus the wrist bend.
+    private func mitten(_ ctx: inout GraphicsContext, P: (CGFloat, CGFloat) -> CGPoint, s: CGFloat,
+                        from a: CGPoint, to e: CGPoint, bend: CGFloat, wrist: Double) {
+        let dx = e.x - a.x, dy = e.y - a.y, len = max(hypot(dx, dy), 0.01)
+        let elbow = CGPoint(x: (a.x + e.x) / 2 - dy / len * bend, y: (a.y + e.y) / 2 + dx / len * bend)
+        var arm = Path(); arm.move(to: P(a.x, a.y)); arm.addQuadCurve(to: P(e.x, e.y), control: P(elbow.x, elbow.y))
+        T(&ctx, arm, 4.6, fur, s)
+        var c = ctx
+        c.translateBy(x: e.x * s, y: e.y * s)
+        c.rotate(by: .radians(atan2(e.y - elbow.y, e.x - elbow.x)) + .degrees(wrist))
+        func o(_ x: CGFloat, _ y: CGFloat, _ w: CGFloat, _ h: CGFloat) -> Path { Path(ellipseIn: CGRect(x: x * s, y: y * s, width: w * s, height: h * s)) }
+        F(&c, o(-1.4, -2.9, 6.2, 5.8), cream, s)                                   // the mitten
+        c.fill(o(0.2, -1.1, 2.4, 2.2), with: .color(pink.opacity(0.8)))            // the pad
+        for y in [-2.0, -0.35, 1.3] as [CGFloat] { c.fill(o(3.0, y, 1.3, 1.1), with: .color(pink.opacity(0.8))) }   // toe beans
+    }
+
+    /// The real nap (owner 13 Oct 2026: the old flat nap "looks like Stretch"): curled into a round loaf, the tail
+    /// wrapped round the front, the head tucked down on the paws, eyes shut. `napBreath` lifts the back as it
+    /// breathes; `napPeek` opens one eye just before it wakes.
+    private func curl(ctx: inout GraphicsContext, P: (CGFloat, CGFloat) -> CGPoint,
+                      oval: (CGFloat, CGFloat, CGFloat, CGFloat) -> Path, s: CGFloat) {
+        let b = napBreath * 3                                                      // the back rises ~3 pt
+        let body = oval(7, 30.5 - b, 36, 19 + b)
+        F(&ctx, body, fur, s)
+        spots(&ctx, clip: body, s, head: false, from: coat.napPatches)
+        for x in [26.0, 31.0, 36.0] as [CGFloat] {                                 // tabby stripes over the curve of the back
+            var st = Path(); st.move(to: P(x, 31.6 - b)); st.addQuadCurve(to: P(x + 1.6, 36 - b * 0.5), control: P(x + 1.6, 33))
+            ctx.stroke(st, with: .color(stripe), style: StrokeStyle(lineWidth: 1.3 * s, lineCap: .round))
+        }
+        // the tail wraps round the front of the loaf, its tip by the nose
+        var tail = Path(); tail.move(to: P(41, 41)); tail.addQuadCurve(to: P(24, 48.2), control: P(41, 49.5))
+        tail.addQuadCurve(to: P(15.5, 46.2), control: P(18, 48.6))
+        T(&ctx, tail, 4.2, fur, s)
+        F(&ctx, oval(7.5, 43.5, 8.5, 4.6), cream, s)                               // front paws, the chin rests on them
+        F(&ctx, oval(13.5, 44.2, 8, 4.2), cream, s)
+        // ears, then the tucked head (low, resting on the paws)
+        var earL = Path(); earL.move(to: P(5, 34)); earL.addQuadCurve(to: P(5.5, 25.5), control: P(3.6, 28.5)); earL.addQuadCurve(to: P(12.5, 29.5), control: P(9, 26)); earL.closeSubpath()
+        var earR = Path(); earR.move(to: P(17, 29)); earR.addQuadCurve(to: P(23.5, 26), control: P(20, 25.6)); earR.addQuadCurve(to: P(24.5, 34), control: P(25.6, 29)); earR.closeSubpath()
+        F(&ctx, earL, coat.earL ?? fur, s); F(&ctx, earR, coat.earR ?? fur, s)
+        let head = oval(3, 28, 23, 18)
+        F(&ctx, head, fur, s)
+        spots(&ctx, clip: head, s, head: true, from: coat.napPatches.map { ($0.0, $0.1.offsetBy(dx: 1, dy: 2.5)) })
+        for (x0, x1) in [(12.5, 12.8), (15.3, 15.3)] as [(CGFloat, CGFloat)] {
+            var st = Path(); st.move(to: P(x0, 29)); st.addLine(to: P(x1, 32))
+            ctx.stroke(st, with: .color(stripe), style: StrokeStyle(lineWidth: 1.3 * s, lineCap: .round))
+        }
+        ctx.fill(oval(9, 38.6, 5.6, 4), with: .color(cream)); ctx.fill(oval(13.4, 38.6, 5.6, 4), with: .color(cream))
+        ctx.fill(oval(4.6, 37.6, 3.6, 2), with: .color(pink.opacity(0.65))); ctx.fill(oval(20.6, 37.6, 3.6, 2), with: .color(pink.opacity(0.65)))
+        var nose = Path(); nose.move(to: P(13, 38)); nose.addLine(to: P(15, 38)); nose.addLine(to: P(14, 39.2)); nose.closeSubpath()
+        ctx.fill(nose, with: .color(pink))
+        var eyes = Path()
+        eyes.move(to: P(6.6, 35)); eyes.addQuadCurve(to: P(11, 35), control: P(8.8, 37))
+        if !napPeek { eyes.move(to: P(17, 35)); eyes.addQuadCurve(to: P(21.4, 35), control: P(19.2, 37)) }
+        ctx.stroke(eyes, with: .color(eye), style: StrokeStyle(lineWidth: 1.2 * s, lineCap: .round))
+        if napPeek {                                                               // one sleepy eye peeks open
+            ctx.fill(oval(17.2, 33.6, 4.2, 3.2), with: .color(eye))
+            ctx.fill(oval(18.4, 34, 1.4, 1.4), with: .color(.white))
+        }
     }
 
     /// The sticker outline (owner 27 Sep 2026 references: every chunky cat wears a dark line — it is what

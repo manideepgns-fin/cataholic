@@ -187,10 +187,13 @@ enum CrewPanel {
                 let se = now.timeIntervalSince(stageT)
                 if caught || i >= legs.count {
                     t.invalidate()
-                    m.runFacing = 0; m.runPhase = 0; m.runLean = 0
+                    m.runFacing = 0; m.runPhase = 0; m.runLean = 0; m.runSpeed = 0; m.runGait = 0
                     zooming = false
                     settleHome(left: x, top: floorTop, screen: screen)
+                    // a proud squash and a happy squint when it stops (owner 13 Oct 2026)
                     m.land(0.75)
+                    m.petUntil = Date().addingTimeInterval(1.3)
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.35) { MainActor.assumeIsolated { m.objectWillChange.send() } }
                     return
                 }
                 let leg = legs[i], dir: CGFloat = leg.b >= leg.a ? 1 : -1
@@ -218,7 +221,10 @@ enum CrewPanel {
                     if se > pause { i += 1; stage = Bool.random() ? 0 : 1; stageT = now; v = 0 }
                 }
                 x = min(max(x, lo), hi)
-                m.runPhase = stage == 3 ? 0 : (stage == 2 ? 0.9 : phase)   // skid: legs braced forward
+                m.runPhase = stage == 3 ? 0 : phase      // a skid (runGait 2) draws its legs braced; the phase drives its dust
+                if stage == 2 { phase += dt * 20 }
+                m.runSpeed = Double(v / topSpeed)
+                m.runGait = stage == 0 ? 1 : (stage == 2 ? 2 : 0)
                 roam = (x, floorTop - lift)
                 panel?.refit()
             }

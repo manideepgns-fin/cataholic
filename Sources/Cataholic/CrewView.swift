@@ -42,14 +42,16 @@ struct CrewView: View {
         // An emote is a performance on the clock (Emote.frame): read once per frame from the timeline's date.
         // Quiet mode / Reduce Motion / snapshots: the identity frame — the action's still pose.
         let animating = model.action != .none && !lifeOffSchedule && !Fx.snapshot
-        let f = animating ? Emote.frame(model.action, at: date.timeIntervalSince(model.lastActionStarted)) : EmoteFrame()
-        let spinScale = model.action == .spin ? cos((Fx.snapshot ? model.spinDeg : f.spin) * .pi / 180) : 1
+        let f = animating ? Emote.frame(model.action, at: date.timeIntervalSince(model.lastActionStarted),
+                                             hanging: CrewPanel.hanging && !model.airborne) : EmoteFrame()
+        let spinScale = model.action == .spin ? cos((Fx.snapshot ? model.spinDeg : f.spin) * .pi / 180) : cos(f.spin * .pi / 180)
         let skin: CrewSkinState
         switch f.skin {
         case .own: skin = skinState(pose)
         case .rest: skin = restSkin(pose)
         case .alert: skin = .alert
         case .crouch, .leap: skin = .jump
+        case .yawn: skin = .yawn
         }
         let crouch = f.skin == .crouch ? true : (f.skin == .leap ? false : model.jumpCrouch)
         let snapLook = Fx.snapshot && model.action == .look      // snapshots park the look mid-turn
@@ -92,7 +94,9 @@ struct CrewView: View {
                               happy: date < model.petUntil,
                               stride: model.runStride,
                               pawRaise: f.paw, pawWave: f.wave, groomPaw: f.groomPaw, tongue: f.tongue,
-                              mouthOpen: f.mouth, earsBack: f.ears, eyes: f.eyes)
+                              mouthOpen: f.mouth, earsBack: f.ears, eyes: f.eyes, pawWrist: f.wrist,
+                              napBreath: f.breath, napPeek: f.peek,
+                              runSpeed: model.runSpeed, runGait: model.runGait)
                     .scaleEffect(x: facing * f.sx, y: f.sy, anchor: running ? .center : feet)   // squash & stretch (and grow big) from the feet
                     .scaleEffect(x: spinScale, y: 1)
                     // Chunky squish on landing / pet: flatter and wider from the feet, springs back.
@@ -100,6 +104,9 @@ struct CrewView: View {
                     .rotationEffect(.degrees(f.rot * facing), anchor: feet)
                     .rotationEffect(.degrees(tilt),
                                     anchor: running ? .center : UnitPoint(x: 0.5, y: 2 / 62))
+                    // the side-on runner touches both edges of its box; 7 % smaller it can lean into a scramble or a skid
+                    // without its tail, whiskers or dust being cut off by the panel (which stays the 46×62 box while running)
+                    .scaleEffect(running ? 0.93 : 1)
             }
             .frame(width: 46 * u, height: 62 * u)
                 .offset(x: tuck)

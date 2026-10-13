@@ -24,6 +24,8 @@ final class CrewModel: ObservableObject {
     @Published var runPhase: Double = 0        // zoomies gallop phase — driven per frame, never animated
     @Published var runStride: Double = 38      // leg swing: 38 = zoomies gallop · 22 = a walk (CrewPanel.glide)
     @Published var runLean: Double = 0         // zoomies: + leans into the scramble, − leans back in a skid
+    @Published var runSpeed: Double = 0        // zoomies: 0 … 1 of top speed (speed lines, dust) — set per frame with runPhase
+    @Published var runGait = 0                 // zoomies: 0 run · 1 scramble · 2 skid
     @Published var airborne = false            // falling / flung (CrewPanel.drop): wide eyes, no pin
     @Published var squash: CGFloat = 1         // landing squish: < 1 = squashed flat (springs back to 1)
     @Published var petUntil = Date.distantPast // petted: "^ ^" eyes until then
@@ -458,7 +460,7 @@ enum CrewPrefs {
 
 /// One frame of an emote: what CrewView applies to the cat this instant. The defaults are today's still pose.
 struct EmoteFrame {
-    enum Skin { case own, rest, alert, crouch, leap }
+    enum Skin { case own, rest, alert, crouch, leap, yawn }
     var skin: Skin = .own                       // own = the action's drawing · rest = the resting cat · the jump's two drawings
     var sx: CGFloat = 1, sy: CGFloat = 1        // squash & stretch about the feet
     var rot: Double = 0                         // lean about the feet (deg, + = clockwise; mirrored with the jump)
@@ -467,6 +469,9 @@ struct EmoteFrame {
     var headTurn: CGFloat = 0, headTilt: CGFloat = 0
     var pupil: CGFloat = 0                      // eyes to the side (pt)
     var paw: CGFloat = 1, wave: Double = 0      // hi: arm raise (0 down … 1 up), wave (deg)
+    var wrist: Double = 0                       // hi / groom: the mitten's wrist bend (deg)
+    var breath: CGFloat = 0                     // nap: the curled back rising (1) / falling (0)
+    var peek = false                            // nap: one eye opens before it wakes
     var groomPaw: CGPoint? = CGPoint(x: 27.5, y: 27.5)   // groom: the licking paw (nil = down)
     var tongue = true                           // groom: tongue out
     var mouth: CGFloat = 1                      // yawn: 0 shut … 1 wide
@@ -493,7 +498,7 @@ enum Emote {
         case .spin: return 2.2
         case .look: return 2.6
         case .jump: return jumpTakeoff + jumpFlight + 0.5
-        case .nap: return 3.4
+        case .nap: return 4.6
         case .clingy: return 2.0
         case .none: return 0
         }
@@ -520,7 +525,7 @@ enum Emote {
         CGPoint(x: a.x + (b.x - a.x) * CGFloat(k), y: a.y + (b.y - a.y) * CGFloat(k))
     }
 
-    static func frame(_ a: CrewModel.Action, at t: Double) -> EmoteFrame {
+    static func frame(_ a: CrewModel.Action, at t: Double, hanging: Bool = false) -> EmoteFrame {
         var f = EmoteFrame()
         guard t < duration(a) else { f.skin = .rest; return f }
         switch a {
@@ -531,6 +536,8 @@ enum Emote {
             f.paw = CGFloat(back(seg(t, 0.12, 0.42), 1.4) * (1 - down))
             let w = seg(t, 0.38, 1.4), env = min(1, w * 5) * min(1, (1 - w) * 5), ph = w * 2.5 * 2 * .pi
             f.wave = sin(ph) * 22 * env
+            // the mitten trails the arm (wrist lag), then one quick flick before it tucks away
+            f.wrist = sin(ph - 1.0) * 28 * env + wob(seg(t, 1.32, 1.62), 1.5, 2) * 40
             let reach = bump(seg(t, 0.15, 0.5)) * 0.05, settle = wob(seg(t, 1.62, 2.0), 1.5)
             f.sy = CGFloat(1 - dip + reach - settle * 0.05)
             f.sx = CGFloat(1 + dip * 0.7 - reach * 0.5 + settle * 0.035)
@@ -598,6 +605,7 @@ enum Emote {
             p = mix(p, rest, down)
             f.groomPaw = t < 2.2 ? p : nil
             f.tongue = licking && fr > 0.15 && fr < 0.75
+            f.wrist = -35 * up * (1 - down) + 18 * lick - 25 * wb          // paw curled in to the face, flexing on each lick
             f.headTilt = CGFloat(5 * up * (1 - down) + 2.5 * lick + 6 * wb)
             f.eyes = t > 0.3 && t < 1.95 ? .shut : (t >= 1.95 ? .open : nil)
             f.earTwitch = 0
@@ -658,22 +666,42 @@ enum Emote {
                 if t < t1 + 0.18 { f.eyes = .shut }
             }
         case .nap:
-            // drowsy (eyes droop, head nods) → flops down with a squash → one slow breath, a z drifts up → wakes, pops up
+            // a real cat nap (owner 13 Oct 2026): drowsy, head nods → turns once round its spot and sinks → curled into
+            // a loaf, tail wrapped, head on its paws, two slow breaths, z's drift up → one eye peeks open → sits up with
+            // a stretch-yawn → blinks awake. On the pin there is no floor to curl on: it dozes sitting, head nodding.
+            let breath = 0.5 - 0.5 * cos(seg(t, 1.0, 3.3) * 2 * 2 * .pi)          // two slow breaths, from and back to 0
+            let zu = seg(t, 1.1, 3.2)
+            let z = (CGFloat(zu * 12), zu <= 0 || zu >= 1 ? 0 : (zu < 0.15 ? zu / 0.15 : 1 - max(0, zu - 0.7) / 0.3))
             if t < 0.5 {
                 let d = smooth(seg(t, 0, 0.5))
                 f.skin = .rest; f.eyes = t < 0.25 ? .half : .shut
-                f.headTilt = CGFloat(4 * d); f.sy = CGFloat(1 - 0.03 * d); f.sx = CGFloat(1 + 0.02 * d); f.ears = CGFloat(0.4 * d)
-            } else if t < 2.75 {
-                let r = ring(seg(t, 0.5, 0.95), 1, 3)
-                let breath = 0.5 - 0.5 * cos(seg(t, 0.8, 2.75) * 2 * .pi)
-                f.sy = CGFloat((1 - 0.1 * r) * (1 + 0.025 * breath)); f.sx = CGFloat(1 + 0.06 * r)
-                let zu = seg(t, 1.0, 2.6)
-                f.z = (CGFloat(zu * 10), zu <= 0 || zu >= 1 ? 0 : (zu < 0.25 ? zu / 0.25 * 0.8 : 0.8 * (1 - (zu - 0.25) / 0.75)))
+                f.headTilt = CGFloat(5 * d); f.sy = CGFloat(1 - 0.03 * d); f.sx = CGFloat(1 + 0.02 * d); f.ears = CGFloat(0.4 * d)
+            } else if t < 0.95 && !hanging {
+                let u = seg(t, 0.5, 0.95)
+                f.skin = .rest; f.eyes = .shut
+                f.spin = 360 * easeInOut(u)                                         // turns once round its spot…
+                f.sy = CGFloat(1 - 0.18 * smooth(u)); f.sx = CGFloat(1 + 0.08 * smooth(u))   // …sinking as it goes
+            } else if t < 3.55 {
+                f.skin = .own
+                f.breath = CGFloat(breath)
+                f.z = z
+                if hanging {
+                    f.headTilt = CGFloat(6 + 2 * breath); f.sy = CGFloat(1 + 0.03 * breath); f.ears = 0.4
+                } else {
+                    let r = ring(seg(t, 0.95, 1.35), 1, 3)                          // flops into the curl with a squash
+                    f.sy = CGFloat(1 - 0.12 * r); f.sx = CGFloat(1 + 0.07 * r)
+                }
+                f.peek = t > 3.2
+                if hanging && t > 3.2 { f.eyes = .half }
+            } else if t < 4.15 {
+                let u = seg(t, 3.55, 4.15), o = bump(u)
+                f.skin = .yawn; f.mouth = CGFloat(o); f.eyes = .shut               // up to sitting with a stretch-yawn
+                f.sy = CGFloat(1 + 0.07 * o - 0.08 * ring(seg(t, 3.55, 3.8), 1, 3)); f.sx = CGFloat(1 - 0.03 * o)
+                f.headTilt = CGFloat(-4 * o); f.ears = CGFloat(0.5 * o)
             } else {
-                let v = seg(t, 2.75, 3.4), r = ring(v, 1.2)
-                f.skin = .rest; f.sy = CGFloat(1 + 0.05 * r); f.sx = CGFloat(1 - 0.03 * r)
-                f.eyes = v < 0.45 ? .half : nil
-                f.earTwitch = bump(seg(t, 3.0, 3.2))
+                let v = seg(t, 4.15, 4.6)
+                f.skin = .rest; f.eyes = v < 0.4 ? .half : (v < 0.55 ? .shut : nil)
+                f.sy = CGFloat(1 - 0.03 * wob(v, 1.5)); f.earTwitch = bump(seg(t, 4.3, 4.5))
             }
         case .clingy, .none:
             break
