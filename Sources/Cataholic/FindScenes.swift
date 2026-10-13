@@ -19,6 +19,19 @@ struct FindProp {
     var tint = 0
     var hides: Bool { kind != .tree && kind != .pine }
     var baseline: CGFloat { cover.maxY }
+    /// The highest point the prop actually draws over a cat behind it — goods on a counter, a boat's gunwale, a bush's
+    /// round top — so "the face shows" is judged on what you see, not on the solid box.
+    var faceTop: CGFloat {
+        switch kind {
+        case .boat: return cover.minY - 7
+        case .well: return cover.minY - 4
+        case .cart: return cover.minY - 2
+        case .counter: return cover.minY - 12
+        default: return min(rect.minY, cover.minY)
+        }
+    }
+    /// May YOUR cat (or a lookalike) hide here? Not behind a snowman: its head and body sit right over a cat's face.
+    var fairHide: Bool { hides && kind != .snowman }
 }
 
 @MainActor enum FindScene {
@@ -117,9 +130,10 @@ struct FindProp {
     /// Would this cat land somewhere silly — in the water, inside a wall, or half-buried in a prop it isn't behind?
     static func blocked(_ place: FindPlace, _ r: CGRect, behind: CGRect?) -> Bool {
         for p in props(place) where p.cover != behind {
+            if !p.hides && r.maxY > p.baseline + 2 { continue }                 // sitting in front of a tree is fine
             if p.rect.insetBy(dx: -3, dy: -3).intersects(r) { return true }
         }
-        for h in buildings(place) where h.wall.insetBy(dx: 4, dy: 4).intersects(r) { return true }
+        for h in buildings(place) where h.wall.insetBy(dx: 4, dy: 4).intersects(r) && r.maxY < h.wall.maxY + 3 { return true }  // in front of a wall is fine
         switch place {
         case .kingdom:
             let moat = CGRect(x: 0, y: 306, width: 1100, height: 46)
@@ -900,5 +914,86 @@ struct FindNightLights: View {
     private func glow(_ ctx: inout GraphicsContext, _ c: CGPoint, _ r: CGFloat, _ a: Double) {
         ctx.fill(Path(ellipseIn: CGRect(x: c.x - r, y: c.y - r, width: r * 2, height: r * 2)),
                  with: .radialGradient(Gradient(colors: [Color(red: 1, green: 0.85, blue: 0.5).opacity(a), .clear]), center: c, startRadius: 0, endRadius: r))
+    }
+}
+
+// MARK: — fair hiding (owner 13 Oct 2026, playing as Snow: a white cat behind a white snowman in white snow, ears only —
+// "how can I even [find] this?")
+
+/// Every placement of YOUR cat (and of its lookalikes) must be findable: the face shows — both eyes, nose and mouth
+/// above whatever it hides behind — enough of the body shows, and the cat reads against what is around it. "Reads"
+/// is measured on the real scene: the backdrop and props are drawn once per place (no cats) and we look at a band
+/// ~8 pt around the part of the cat that shows; if too much of that band is close to the cat's fur colour, the cat
+/// would melt into it, and the spot is refused. Hard levels stay hard through decoys and lookalikes, never camouflage.
+@MainActor enum FindFair {
+    /// Box y (1×, the 46×62 character box) below which the eyes, nose and mouth all sit.
+    static let faceLine: CGFloat = 28
+    /// Most of the band around the cat may not be within this colour distance of its fur…
+    static let near: Double = 0.17
+    /// …and at most this share of the band may be.
+    static let maxBlend: Double = 0.38
+
+    private static var scenes: [FindPlace: (px: [UInt8], w: Int, h: Int)] = [:]
+
+    /// The place drawn without cats, as RGBA bytes at 1 px per scene point.
+    static func scene(_ place: FindPlace) -> (px: [UInt8], w: Int, h: Int) {
+        if let s = scenes[place] { return s }
+        let props = FindScene.props(place)
+        let view = ZStack(alignment: .topLeading) {
+            FindBackdrop(place: place)
+            ForEach(0..<props.count, id: \.self) { i in FindPropView(prop: props[i]) }
+        }
+        .frame(width: FindScene.size.width, height: FindScene.size.height, alignment: .topLeading)
+        let r = ImageRenderer(content: view)
+        r.scale = 1
+        let w = Int(FindScene.size.width), h = Int(FindScene.size.height)
+        var px = [UInt8](repeating: 255, count: w * h * 4)
+        if let cg = r.cgImage, let ctx = CGContext(data: &px, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4,
+                                                  space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) {
+            ctx.draw(cg, in: CGRect(x: 0, y: 0, width: w, height: h))
+        }
+        scenes[place] = (px, w, h)
+        return (px, w, h)
+    }
+
+    static func rgb(_ c: Color) -> (Double, Double, Double) {
+        let n = NSColor(c).usingColorSpace(.sRGB) ?? .gray
+        return (Double(n.redComponent), Double(n.greenComponent), Double(n.blueComponent))
+    }
+
+    /// Does the face clear whatever the cat hides behind?
+    static func faceShows(_ cat: FindCat) -> Bool {
+        guard let top = cat.top else { return true }
+        return top >= cat.feet.y + (faceLine - 49) * cat.scale
+    }
+    /// How much of the cat's height shows.
+    static func shown(_ cat: FindCat) -> CGFloat { cat.visible.height / max(1, cat.rect.height) }
+
+    /// The share of the band around the visible cat that is close to its fur colour (0 = stands out, 1 = invisible).
+    static func blend(_ cat: FindCat, _ place: FindPlace) -> Double {
+        let s = scene(place), fur = rgb(cat.coat.fur)
+        let v = cat.visible, band = v.insetBy(dx: -8, dy: -8)
+        var close = 0, all = 0
+        var y = band.minY
+        while y <= band.maxY {
+            var x = band.minX
+            while x <= band.maxX {
+                if !v.contains(CGPoint(x: x, y: y)), x >= 0, y >= 0, Int(x) < s.w, Int(y) < s.h {
+                    let i = (Int(y) * s.w + Int(x)) * 4
+                    let d = sqrt(pow(Double(s.px[i]) / 255 - fur.0, 2) + pow(Double(s.px[i + 1]) / 255 - fur.1, 2) + pow(Double(s.px[i + 2]) / 255 - fur.2, 2))
+                    if d < near { close += 1 }
+                    all += 1
+                }
+                x += 2
+            }
+            y += 2
+        }
+        return all == 0 ? 0 : Double(close) / Double(all)
+    }
+
+    /// The whole rule.
+    static func fair(_ cat: FindCat, _ place: FindPlace, minShow: CGFloat) -> Bool {
+        faceShows(cat) && shown(cat) >= minShow - 0.001 && blend(cat, place) <= maxBlend
     }
 }

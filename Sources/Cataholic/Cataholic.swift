@@ -29,6 +29,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             MainActor.assumeIsolated { CataholicRender.icon(to: args[i + 1]) }
             NSApp.terminate(nil); return
         }
+        // `--check-find [N]`: the Find my cat fairness self-check (no window, no sound); exits 0 only if every layout is fair.
+        if let i = args.firstIndex(of: "--check-find") {
+            let n = i + 1 < args.count ? Int(args[i + 1]) ?? 200 : 200
+            let code = MainActor.assumeIsolated { FindCheck.run(n) }
+            exit(code)
+        }
         NSApp.setActivationPolicy(.accessory)
         _ = Updates.controller                       // Sparkle starts checking (daily, in the background)
         CrewPanel.show()

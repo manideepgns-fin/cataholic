@@ -24,6 +24,7 @@ xcrun notarytool history --keychain-profile "${NOTARY_PROFILE:-cataholic-notary}
   echo "      xcrun notarytool store-credentials cataholic-notary --team-id RCZPRL6BS4 --apple-id <your Apple ID>" >&2
   exit 1; }
 scripts/build.sh
+dist/Cataholic.app/Contents/MacOS/Cataholic --check-find 60 || { echo "STOP: Find my cat fairness check failed" >&2; exit 1; }
 scripts/notarize.sh
 ZIP="$ROOT/dist/Cataholic-$V.zip"; FEED="$ROOT/dist/feed-$V"
 ditto -c -k --sequesterRsrc --keepParent dist/Cataholic.app "$ZIP"     # --sequesterRsrc: what Sparkle expects

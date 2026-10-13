@@ -152,6 +152,7 @@ struct FindCat: Identifiable {
     let scale: CGFloat
     let flip: Bool
     var cover: CGRect? = nil         // the prop it peeks over, if any
+    var top: CGFloat? = nil          // …and the highest point that prop draws over it (FindProp.faceTop)
     var odd: FindOdd? = nil          // a lookalike: the one detail that's wrong
     /// The drawn cat, unhidden, in scene points (each pose's own outline inside the 46×62 box).
     var rect: CGRect {
@@ -168,7 +169,7 @@ struct FindCat: Identifiable {
     /// The part you can actually see (above whatever it hides behind).
     var visible: CGRect {
         var r = rect
-        if let c = cover { r.size.height = max(6, c.minY - r.minY) }
+        if let t = top ?? cover?.minY { r.size.height = max(6, t - r.minY) }
         return r
     }
     var box: CGRect { CGRect(x: feet.x - 23 * scale, y: feet.y - 49 * scale, width: 46 * scale, height: 62 * scale) }
@@ -191,14 +192,15 @@ struct FindRound {
     let mine: CGFloat                // your cat's scale
     static func make(_ level: Int, _ rng: inout FindRandom) -> FindRound {
         switch level {
-        case 1: return FindRound(level: 1, place: .kingdom, night: false, decoys: 30, lookalikes: 0, show: 0.42...0.55, mine: 0.6)
-        case 2: return FindRound(level: 2, place: .kingdom, night: false, decoys: 30, lookalikes: 4, show: 0.36...0.48, mine: 0.58)
-        case 3: return FindRound(level: 3, place: .harbour, night: false, decoys: 34, lookalikes: .random(in: 5...6, using: &rng), show: 0.24...0.3, mine: 0.52)
-        case 4: return FindRound(level: 4, place: .snow, night: false, decoys: 40, lookalikes: 6, show: 0.26...0.34, mine: 0.52)
-        case 5: return FindRound(level: 5, place: .kingdom, night: true, decoys: 40, lookalikes: 6, show: 0.3...0.38, mine: 0.52)
+        // `show` never goes below the face line (FindFair): the face always shows, ~50 % of the body at 1–2, ~35 %+ after.
+        case 1: return FindRound(level: 1, place: .kingdom, night: false, decoys: 30, lookalikes: 0, show: 0.55...0.66, mine: 0.6)
+        case 2: return FindRound(level: 2, place: .kingdom, night: false, decoys: 32, lookalikes: 4, show: 0.52...0.62, mine: 0.58)
+        case 3: return FindRound(level: 3, place: .harbour, night: false, decoys: 38, lookalikes: .random(in: 5...6, using: &rng), show: 0.5...0.58, mine: 0.52)
+        case 4: return FindRound(level: 4, place: .snow, night: false, decoys: 44, lookalikes: 6, show: 0.5...0.58, mine: 0.52)
+        case 5: return FindRound(level: 5, place: .kingdom, night: true, decoys: 40, lookalikes: 6, show: 0.5...0.6, mine: 0.52)
         default:
             let p = FindPlace.allCases.randomElement(using: &rng)!
-            return FindRound(level: 6, place: p, night: p == .kingdom, decoys: 40, lookalikes: 6, show: 0.26...0.36, mine: 0.52)
+            return FindRound(level: 6, place: p, night: p == .kingdom, decoys: 42, lookalikes: 6, show: 0.5...0.58, mine: 0.52)
         }
     }
 }
@@ -212,6 +214,7 @@ struct FindRound {
     @Published private(set) var round: FindRound
     @Published var celebrating = false          // the found-it wave + sparkles run a clock only while this is on
     private(set) var foundAt = Date.distantPast
+    private(set) var unfair = false              // no fair spot was found for your cat (the probe asserts this stays false)
 
     nonisolated static var savedLevel: Int {
         get { min(6, max(1, UserDefaults.standard.integer(forKey: "findLevel"))) }
@@ -245,7 +248,10 @@ struct FindRound {
         deal(&rng)
     }
 
-    init(level: Int = FindGame.savedLevel, seed: UInt64 = UInt64.random(in: 1...UInt64.max)) {
+    private let coat: CatCoat?                  // the self-check deals for every coat without touching your pick
+
+    init(level: Int = FindGame.savedLevel, seed: UInt64 = UInt64.random(in: 1...UInt64.max), coat: CatCoat? = nil) {
+        self.coat = coat
         var rng = FindRandom(seed)
         round = FindRound.make(level, &rng)
         deal(&rng)
@@ -309,8 +315,12 @@ struct FindRound {
     /// one wrong detail shows), then decoys in the other seven coats — behind props, on roofs, on the open ground —
     /// never covering yours, never wearing your coat.
     private func deal(_ rng: inout FindRandom) {
-        let me = CatCoat.current, R = round, place = R.place
-        let others = CatCoat.all.filter { $0 != me }
+        let me = coat ?? CatCoat.current, R = round, place = R.place
+        var others = CatCoat.all.filter { $0 != me }
+        if place == .snow {                                       // the snowy village is full of pale cats (the hard part)
+            let pale = others.filter { ["snow", "smokey", "lilac", "butter", "patches"].contains($0.id) }
+            others += pale + pale
+        }
         let props = FindScene.props(place)
         var out: [FindCat] = []
         var taken: [CGRect] = []
@@ -319,19 +329,34 @@ struct FindRound {
             let c = props[i].cover, w = 43 * scale
             guard c.width > w + 6 else { return nil }
             let x = CGFloat.random(in: (c.minX + w / 2 + 3)...(c.maxX - w / 2 - 3), using: &rng)
-            let y = c.minY - show * 45 * scale + 43 * scale
+            let y = props[i].faceTop - show * 45 * scale + 43 * scale     // `show` of its height above what the prop draws
             guard y + 2 * scale <= c.maxY - 1 else { return nil }
             return FindCat(id: out.count, coat: coat, state: .look, feet: CGPoint(x: x, y: y), scale: scale,
-                           flip: Bool.random(using: &rng), cover: c)
+                           flip: Bool.random(using: &rng), cover: c, top: props[i].faceTop)
         }
         func ok(_ c: FindCat) -> Bool { free(c.rect) && !FindScene.blocked(place, c.rect, behind: c.cover) && FindScene.inside(c.box) }
-        // 1. Yours: behind a prop that can hide it.
+        // 1. Yours: tucked behind a prop where it is still FAIR (face shows, enough body, reads against its
+        //    surroundings — FindFair); if no prop gives that, out in the open where it reads.
+        let minShow = R.show.lowerBound
+        func fair(_ c: FindCat) -> Bool { FindFair.fair(c, place, minShow: minShow) }
         let hideouts = props.indices.filter { props[$0].hides }.shuffled(using: &rng)
-        for i in hideouts {
-            if let c = behind(i, coat: me, scale: R.mine, show: .random(in: R.show, using: &rng)), ok(c) {
-                out.append(c); taken.append(c.rect.insetBy(dx: -12, dy: -12)); break
+        placing: for i in hideouts where props[i].fairHide {
+            for _ in 0..<3 {
+                if let c = behind(i, coat: me, scale: R.mine, show: .random(in: R.show, using: &rng)), ok(c), fair(c) {
+                    out.append(c); break placing
+                }
             }
         }
+        var t0 = 0
+        while out.isEmpty && t0 < 1500 {
+            t0 += 1
+            let spot = FindScene.openSpot(place, &rng)
+            let c = FindCat(id: 0, coat: me, state: .look, feet: spot.at, scale: R.mine * spot.scale, flip: Bool.random(using: &rng))
+            if ok(c), fair(c) { out.append(c) }
+        }
+        unfair = out.isEmpty
+        if out.isEmpty, let i = hideouts.first, let c = behind(i, coat: me, scale: R.mine, show: R.show.upperBound) { out.append(c) }   // never happens (the probe checks)
+        taken.append(out[0].rect.insetBy(dx: -12, dy: -12))
         yours = 0
         // 2. Lookalikes: about a third peek over props (with a detail you can see from above), the rest in the open.
         var odds = FindOdd.allCases.shuffled(using: &rng)
@@ -344,14 +369,14 @@ struct FindRound {
             let odd = odds[pick]
             let scale = R.mine * .random(in: 0.98...1.12, using: &rng)
             var c: FindCat?
-            if peek, odd.showsFromAbove, let i = hideouts.dropFirst().randomElement(using: &rng) {
+            if peek, odd.showsFromAbove, let i = hideouts.filter({ props[$0].fairHide }).randomElement(using: &rng) {
                 c = behind(i, coat: Self.variant(of: me, odd), scale: scale, show: .random(in: 0.55...0.75, using: &rng))
             } else if !peek {
                 let spot = FindScene.openSpot(place, &rng)
                 c = FindCat(id: out.count, coat: Self.variant(of: me, odd), state: .look, feet: spot.at, scale: scale * spot.scale,
                             flip: Bool.random(using: &rng))
             }
-            guard var cat = c, ok(cat) else { continue }
+            guard var cat = c, ok(cat), FindFair.fair(cat, place, minShow: 0.5) else { continue }   // lookalikes are findable too
             cat.odd = odd
             out.append(cat); taken.append(cat.rect); odds.remove(at: pick); made += 1
         }
@@ -765,3 +790,44 @@ private struct FindCelebration: View {
     }
 }
 
+
+// MARK: — the fairness self-check (`Cataholic --check-find [N]`, run by scripts/release.sh before every release)
+
+/// Deals N layouts per level per coat, silently, and checks every placement of your cat and of every lookalike against
+/// FindFair: the face shows, enough of the body shows, and it reads against its surroundings. Prints a table; exit 0 only
+/// when every placement passes (owner 13 Oct 2026, after a white cat hid behind a white snowman).
+@MainActor enum FindCheck {
+    static func run(_ n: Int) -> Int32 {
+        let t0 = Date()
+        var failed: String?
+        print("Find my cat fairness check — \(n) layouts × \(CatCoat.all.count) coats × 5 levels")
+        for lv in 1...5 {
+            var mine = 0, minePass = 0, open = 0, twins = 0, twinPass = 0, worst = 0.0
+            for coat in CatCoat.all {
+                for k in 0..<n {
+                    let seed = UInt64(lv * 1_000_003 + k * 7_919 + 17)
+                    let g = FindGame(level: lv, seed: seed, coat: coat)
+                    let place = g.round.place, m = g.mine
+                    let b = FindFair.blend(m, place)
+                    worst = max(worst, b)
+                    let ok = !g.unfair && m.coat == coat && FindFair.faceShows(m)
+                        && FindFair.shown(m) >= g.round.show.lowerBound - 0.001 && b <= FindFair.maxBlend
+                    mine += 1
+                    if ok { minePass += 1 } else if failed == nil { failed = "L\(lv) coat \(coat.id) seed \(seed): your cat (blend \(String(format: "%.2f", b)))" }
+                    if m.cover == nil { open += 1 }
+                    for t in g.cats where t.odd != nil {
+                        twins += 1
+                        if FindFair.faceShows(t) && FindFair.shown(t) >= 0.5 - 0.001 && FindFair.blend(t, place) <= FindFair.maxBlend { twinPass += 1 }
+                        else if failed == nil { failed = "L\(lv) coat \(coat.id) seed \(seed): lookalike \(t.id) (\(t.odd!))" }
+                    }
+                }
+            }
+            print(String(format: "L%d  your cat %d/%d fair (%.1f%%) · in the open %d · lookalikes %d/%d fair · worst blend %.2f (limit %.2f)",
+                         lv, minePass, mine, Double(minePass) * 100 / Double(max(1, mine)), open, twinPass, twins, worst, FindFair.maxBlend))
+        }
+        print(String(format: "took %.1f s", Date().timeIntervalSince(t0)))
+        if let f = failed { print("FAIL — first failure: \(f)"); return 1 }
+        print("PASS — every placement is fair")
+        return 0
+    }
+}
