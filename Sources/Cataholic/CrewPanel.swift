@@ -7,8 +7,7 @@ import SwiftUI
 // full-screen auxiliary, no shadow), on the menu-bar display (CrewScreen.home).
 // The panel is only as big as the character, so it never blocks clicks elsewhere.
 // The billing pane is GONE (26 Sep 2026): a click on the cat opens the web
-// Billing Desk in the default browser. Quiet mode: characters shrink to 7pt
-// dots (14 pt on screen) on the edge, amber when the desk needs you.
+// Billing Desk in the default browser. Sleep mode (CrewPrefs.quiet): the cat lies curled up and still.
 // Sizes: layout and drawing are 1× points (CrewLayout); this file works in SCREEN
 // points, so every cat-sized number here is × CrewLayout.zoom.
 @MainActor
@@ -693,24 +692,12 @@ final class CrewNSPanel: NSPanel {
         return (left, top)
     }
 
-    // Size = the characters only (the billing pane is gone). Quiet = one 12×14 dot (× zoom).
+    // Size = the characters only (the billing pane is gone).
     // A pose or the ring grows the panel to the drawn bounds + 4 pt (CrewLayout),
     // anchored so the character's FEET stay put, clamped into the visible frame;
     // it shrinks back when the pose ends.
     func refit() {
         guard let screen = CrewScreen.home else { return }
-        if CrewPrefs.quiet {
-            let q = CrewLayout.quietSize(agents: model.agents.count)
-            let w = q.width * CrewLayout.zoom, h = q.height * CrewLayout.zoom
-            let x = CrewMove.docked ? screen.frame.maxX - w : CrewMove.left(screen)
-            var top = CrewMove.top(screen)
-            let lowest = screen.frame.maxY - screen.visibleFrame.minY - 12
-            if top + h > lowest { top = max(CrewMove.minTop, lowest - h) }
-            spec = CrewLayout.Spec(size: q, box: .zero)
-            setFrame(NSRect(x: x, y: screen.frame.maxY - top - h, width: w, height: h), display: true)
-            host.frame = NSRect(origin: .zero, size: frame.size)
-            return
-        }
         // The character's face is drawn by the panel-edge offset inside
         // CrewView (16pt tucked, 0 out; × zoom on screen) — the panel itself always covers the
         // full 46pt (× zoom) so macOS never clips the face, and the 30pt-visible tuck
@@ -748,28 +735,21 @@ final class CrewNSPanel: NSPanel {
     }
 }
 
-// The panel root: the character column. Quiet: one 7pt dot per agent (amber when it needs you).
+// The panel root: the character column.
 // The column is laid out and drawn at its 1× size (CrewLayout), then scaled by CrewLayout.zoom
 // from the top-left and framed at the on-screen size — gestures, hover and tooltips ride the
 // scale, so nothing inside has to know about it.
 struct CrewRoot: View {
     @ObservedObject var model: CrewModel
-    var quiet = CrewPrefs.quiet
     var body: some View {
-        let size = quiet ? CrewLayout.quietSize(agents: model.agents.count) : CrewLayout.spec(for: model).size
+        let size = CrewLayout.spec(for: model).size
         let z = CrewLayout.zoom
         VStack(spacing: 4 * CrewLayout.zoom) {
             ForEach(model.agents) { a in
-                if quiet {
-                    quietDot
-                        .onTapGesture { CrewPanel.openGame() }
-                        .help(quietTip)
-                } else {
-                    CrewView(model: model, agent: a)
-                        // Ring open: the grown panel content (154×170) — the
-                        // view sizes itself; closed: the plain character box.
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                }
+                CrewView(model: model, agent: a)
+                    // Ring open: the grown panel content (154×170) — the
+                    // view sizes itself; closed: the plain character box.
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
         }
         // Native size: the views multiply their own numbers by zoom. Scaling a rendered layer
@@ -778,18 +758,6 @@ struct CrewRoot: View {
         .background(Color.clear)
     }
 
-    private var quietDot: some View {
-        Circle()
-            .fill(MailStore.shared.yourMove.isEmpty
-                  ? Color(nsColor: .separatorColor)
-                  : Color(red: 0.91, green: 0.69, blue: 0.29))
-            .frame(width: 7 * CrewLayout.zoom, height: 7 * CrewLayout.zoom)
-            .padding(.trailing, 3 * CrewLayout.zoom).padding(.top, 3 * CrewLayout.zoom)
-    }
-    private var quietTip: String {
-        let n = MailStore.shared.yourMove.count
-        return n > 0 ? "Cataholic · \(n)" : "Cataholic · asleep"
-    }
 }
 
 

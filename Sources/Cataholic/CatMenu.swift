@@ -64,7 +64,7 @@ struct CatMenuView: View {
             HStack(spacing: 4) {
                 Chip("Show cats", help: "Show the cats", symbol: "pawprint.fill", on: CrewPrefs.showCrew) { CrewPrefs.setShowCrew($0) }
                 Chip("Sounds", help: "Cat sounds", symbol: "speaker.wave.2.fill", on: CrewSound.isOn) { CrewSound.setEnabled($0) }
-                Chip("Quiet", help: "Quiet mode", symbol: "moon.fill", on: CrewPrefs.quiet) { CrewPrefs.setQuiet($0) }
+                Chip("Sleep", help: "Sleep: she curls up and stays still", symbol: "moon.fill", on: CrewPrefs.quiet) { CrewPrefs.setQuiet($0) }
                 Chip("Grid", help: "Window grid", symbol: "squareshape.split.3x3", on: WindowGuides.isOn) { WindowGuides.setOn($0) }
                 Chip("At login", help: "Launch at login", symbol: "power", on: SMAppService.mainApp.status == .enabled) { on in
                     try? on ? SMAppService.mainApp.register() : SMAppService.mainApp.unregister()
@@ -270,6 +270,7 @@ enum CatMenuPanel {
         let p = KeyPanel(contentRect: NSRect(origin: .zero, size: size),
                          styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         p.isOpaque = false; p.backgroundColor = .clear; p.hasShadow = true
+        p.isMovableByWindowBackground = true            // drag it by any empty spot (owner 14 Oct 2026)
         p.level = .popUpMenu
         p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         let glass = NSVisualEffectView(frame: NSRect(origin: .zero, size: size))   // sized first: autoresizing adds the growth

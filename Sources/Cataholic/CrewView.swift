@@ -19,7 +19,12 @@ struct CrewView: View {
     let agent: CrewModel.Agent
     var body: some View {
         Group {
-            if lifeOffSchedule || !moving {
+            if asleep && !Fx.reduced && !Fx.snapshot {
+                // Sleep mode: one slow breath every ~4 s, drawn at 12 fps — enough for a 3 pt rise, light on the CPU.
+                TimelineView(.animation(minimumInterval: 1 / 12)) { tl in
+                    lifeFrame(date: tl.date)
+                }
+            } else if lifeOffSchedule || !moving {
                 TimelineView(.explicit([])) { tl in
                     lifeFrame(date: tl.date)
                 }
@@ -44,10 +49,12 @@ struct CrewView: View {
         let facing: Double = running ? (model.runFacing < 0 ? -1 : 1) : (model.action == .jump || model.action == .look ? model.jumpFacing : 1)
         let breatheScale = lifeBreatheScale(t)
         // An emote is a performance on the clock (Emote.frame): read once per frame from the timeline's date.
-        // Quiet mode / Reduce Motion / snapshots: the identity frame — the action's still pose.
+        // Sleep mode / Reduce Motion / snapshots: the identity frame — the action's still pose.
+        // Sleep mode at rest: the nap's curled-up held frame, still (owner 14 Oct 2026: "it just sleeps curly").
         let animating = model.action != .none && !lifeOffSchedule && !Fx.snapshot
         let f = animating ? Emote.frame(model.action, at: date.timeIntervalSince(model.lastActionStarted),
-                                             hanging: CrewPanel.hanging && !model.airborne, hold: model.napHold) : EmoteFrame()
+                                             hanging: CrewPanel.hanging && !model.airborne, hold: model.napHold)
+            : asleep ? sleepFrame(date) : EmoteFrame()
         let spinScale = model.action == .spin ? cos((Fx.snapshot ? model.spinDeg : f.spin) * .pi / 180) : cos(f.spin * .pi / 180)
         let skin: CrewSkinState
         switch f.skin {
@@ -287,7 +294,7 @@ struct CrewView: View {
         case .jump: return .jump
         case .clingy: return .clingy
         case .nap: return .nap
-        case .none: break
+        case .none: if asleep { return .nap }
         }
         return restSkin(p)
     }
@@ -307,6 +314,14 @@ struct CrewView: View {
     // work then). Quiet/Reduce Motion park on an empty explicit schedule:
     // static pose + blink only.
     private var lifeOffSchedule: Bool { Fx.reduced || CrewPrefs.quiet }
+    /// The nap's curled-up held frame, the back rising and falling slowly (owner 14 Oct 2026: "add the slow breath").
+    private func sleepFrame(_ date: Date) -> EmoteFrame {
+        var f = Emote.frame(.nap, at: Emote.napHoldAt, hanging: CrewPanel.hanging, hold: 1)
+        if !Fx.reduced && !Fx.snapshot { f.breath = CGFloat(0.5 - 0.5 * cos(date.timeIntervalSinceReferenceDate * 2 * .pi / 4.2)) }
+        return f
+    }
+    /// Sleep mode, nothing else going on: she lies curled up (the nap's held frame).
+    private var asleep: Bool { CrewPrefs.quiet && model.action == .none && model.runFacing == 0 && !model.airborne }
     /// Frames only while something moves (owner 28 Sep 2026: "if its idle its idle, no theatrics"). At rest the cat
     /// is ONE still frame — no breathing, tail sway, blinks or eyes on the pointer — and redraws only when its state
     /// changes (the model publishes). A 30 fps life layer cost ~12% CPU and leaked memory every frame. A held nap is still too.

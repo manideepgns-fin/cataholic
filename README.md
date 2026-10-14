@@ -44,7 +44,7 @@ A chunky cat (or a hundred) that lives on your Mac.
 - **Emotes that perform** — each one winds up, plays and settles: a mitten-paw wave, grooming with toe beans, a
   curled-up nap with drifting z's, and zoomies with dust, skids and a proud squint at the end.
 - **Light as a feather** — at rest the cat is one still picture: ~0% CPU, ~30 MB. It only animates when it moves.
-- Naps melted flat when you're away. Quiet mode and Reduce Motion calm everything down.
+- Naps melted flat when you're away. Sleep mode curls her up, still and silent; Reduce Motion calms everything down.
 
 Cat sounds are CC0 / public-domain recordings — see `Resources/Sounds/CREDITS.md`.
 

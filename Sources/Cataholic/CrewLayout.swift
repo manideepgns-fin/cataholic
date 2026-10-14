@@ -46,10 +46,6 @@ enum CrewLayout {
         var box: CGPoint                    // where the character box's top-left sits inside it
     }
     static let closed = Spec(size: CGSize(width: charW, height: charH), box: .zero)
-    /// Quiet mode's panel, 1× points: one 12×14 dot per agent, 22 pt apart.
-    static func quietSize(agents n: Int) -> CGSize {
-        CGSize(width: 12, height: 14 + CGFloat(max(n - 1, 0)) * 22)
-    }
 
     /// The text overlays that hang outside the character box: the peek bubble,
     /// the whisper and the "N ✉" caption. Fixed frames in character-box points —
