@@ -8,7 +8,7 @@ namespace Cataholic;
 // `--scenario <name>`: set the cat up in a known state and drive her, so a screenshot proves a behaviour (the cloud test
 // takes them; see windows/scripts/ci-run.ps1 and the workflow). Scenarios keep prefs in memory (Prefs.Ephemeral) and
 // never touch %APPDATA%. `--trace <file>` writes one line a second: where the cat is, what she is doing.
-//   rest · drop · taskbar · zoomies · herd20 · herd100 · own · menu · sleep · emotes · reduced · idlenap · touch · sign · find
+//   rest · drop · taskbar · zoomies · herd20 · herd100 · own · menu · sleep · emotes · reduced · idlenap · touch · sign · find · update
 static class Scenario
 {
     public static int Failures;
@@ -51,6 +51,7 @@ static class Scenario
     {
         if (tracePath != null) { try { trace = new StreamWriter(tracePath, true) { AutoFlush = true }; } catch { } }
         CatOwn.Log = s => Trace("own " + s);
+        Updates.Log = s => Trace("update " + s);                  // updates
         Later.Every(1.0, _ => Trace($"t={(DateTime.Now - T0).TotalSeconds:0.0}"));
         switch (name)
         {

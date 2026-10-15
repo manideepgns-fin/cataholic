@@ -1,0 +1,46 @@
+# Cataholic for Windows — the release. Push a tag `win-v<version>` (it must equal <Version> in Cataholic.Win.csproj) and this
+# builds, packages, smoke-tests and publishes the release. Windows releases are NEVER marked Latest: the Mac app's Sparkle
+# feed is releases/latest/download/appcast.xml, and a Windows release there would cut every installed Mac copy off from updates.
+# The Mac tags (v*), the appcast and the Mac release are not touched by anything in this file.
+name: windows-release
+on:
+  push:
+    tags: ['win-v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'The existing tag to release, e.g. win-v0.1.0'
+        required: true
+      dry_run:
+        description: 'Do every step except creating the release'
+        type: boolean
+        default: false
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        # a dry run builds the dispatched branch (the tag usually doesn't exist yet); the tag is still checked against the csproj below
+        with: { ref: '${{ (inputs.dry_run && github.ref) || inputs.tag || github.ref }}' }
+      - uses: actions/setup-dotnet@v4
+        with: { dotnet-version: '8.0.x' }
+      - name: Package (tag check, publish, smoke test, zip, sha256)
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: windows/scripts/package-release.ps1 -Out out -Tag $env:TAG
+      - name: Create the release (never Latest)
+        if: ${{ !inputs.dry_run }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          # the title carries the version; the tag was checked against the csproj in the step above
+          gh release create $env:TAG out/Cataholic-win-x64.zip out/Cataholic-win-x64.zip.sha256 `
+            --verify-tag --latest=false --title "Cataholic for Windows $($env:TAG -replace '^win-v', '')" `
+            --notes-file windows/RELEASE_NOTES.md
+          if ($LASTEXITCODE -ne 0) { throw "gh release create failed" }
+      - name: Dry run — what would have been published
+        if: ${{ inputs.dry_run }}
+        run: Get-ChildItem out/Cataholic-win-x64.zip* | Select-Object Name, Length | Format-Table

@@ -20,7 +20,7 @@ namespace Cataholic;
 //   2. Do something — the 3×3 action grid, the hero of the panel; "On her own" switch.
 //   3. More cats — the herd size, one segmented row.
 //   4. Switches — Control-Center chips (accent = on): Show cats · Sounds · Sleep · At login.
-//   5. Footer — the version and Quit. (No Grid chip and no "Check for updates" in this release.)
+//   5. Footer — the version, Check for updates and Quit as small buttons. (No Grid chip: the window grid is Mac-only.)
 // Nothing in the panel changes its height while it is open. Every value lives where it always did (the prefs file).
 static class CatMenuPanel
 {
@@ -403,6 +403,9 @@ sealed class MenuWindow : Window
         var quit = Pill(new StackPanel { Orientation = Orientation.Horizontal, Children = { Glyph("\uE7E8", 11, Br(th.Dim)), Gap(5), Txt("Quit", 11, th.Dim) } },
             Colors.Transparent, Color.FromArgb(26, th.Ink.R, th.Ink.G, th.Ink.B), () => Application.Current.Shutdown());
         DockPanel.SetDock(quit, Dock.Right); d.Children.Add(quit);
+        var check = Pill(new StackPanel { Orientation = Orientation.Horizontal, Children = { Glyph("\uE896", 11, Br(th.Dim)), Gap(5), Txt("Check for updates", 11, th.Dim) } },     // updates
+            Colors.Transparent, Color.FromArgb(26, th.Ink.R, th.Ink.G, th.Ink.B), () => { close(); Updates.Check(manual: true); });
+        DockPanel.SetDock(check, Dock.Right); d.Children.Add(check);
         return new Border { BorderBrush = Ink(26), BorderThickness = new Thickness(0, 1, 0, 0), Margin = new Thickness(0, 0, 0, 0), Child = d, Padding = new Thickness(0, 0, 0, 0) };
     }
 }

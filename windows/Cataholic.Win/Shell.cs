@@ -26,7 +26,11 @@ public static class Shell
         if (scenario != null) Scenario.Prepare(scenario);
         CatPanel.Show();
         if (scenario != null) Scenario.Run(scenario, trace);
+        Updates.Start(scenario);                                       // updates
     }
+
+    /// A tray balloon (a manual "Check for updates" answers with one).
+    public static void Notify(string text) => tray?.ShowBalloonTip(4000, "Cataholic", text, ToolTipIcon.None);   // updates
 
     public static void Stop()
     {
