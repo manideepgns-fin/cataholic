@@ -53,8 +53,8 @@ static class WindowGuides
     /// overlay's counters: gups = full-screen uploads (must be 1 per display per drag), gstrips = thin-window uploads (one per
     /// kind of line), gblends = fade updates (no pixels copied), gmoves = SetWindowPos calls.
     public static int Drags, Events, Draws, LitNow;
-    public static double DrawMs;
-    public static string Trace => $"grid={(startEndHook != IntPtr.Zero ? "on" : "off")} drags={Drags} locs={Events} gdraws={Draws} gdrawMs={DrawMs:0.0} gups={GuideOverlay.Renders} gstrips={GuideOverlay.StripPics} gblends={GuideOverlay.Blends} gmoves={GuideOverlay.Moves} grefused={GuideOverlay.Refused} lit={LitNow} fullDrag={GuideNative.FullWindowDrag}";
+    public static double DrawMs, DrawMaxMs;
+    public static string Trace => $"grid={(startEndHook != IntPtr.Zero ? "on" : "off")} drags={Drags} locs={Events} gdraws={Draws} gdrawMs={DrawMs:0.0} gmaxMs={DrawMaxMs:0.0} glumaMs={GuideOverlay.LumaMs:0} gpaintMs={GuideOverlay.PaintMs:0} gups={GuideOverlay.Renders} gstrips={GuideOverlay.StripPics} gblends={GuideOverlay.Blends} gmoves={GuideOverlay.Moves} grefused={GuideOverlay.Refused} lit={LitNow} fullDrag={GuideNative.FullWindowDrag}";
 
     public static void Start()
     {
@@ -168,7 +168,7 @@ static class WindowGuides
         foreach (var kv in overlays) if (kv.Key != mon.Handle) kv.Value.Hide();                // the window moved to another display: that display's lines go
         if (!overlays.TryGetValue(mon.Handle, out var ov)) overlays[mon.Handle] = ov = new GuideOverlay();
         ov.Update(mon, all, on, win);
-        Draws++; DrawMs = sw.Elapsed.TotalMilliseconds;
+        Draws++; DrawMs = sw.Elapsed.TotalMilliseconds; DrawMaxMs = Math.Max(DrawMaxMs, DrawMs);
     }
 
     /// A chessboard built out from the centre (owner 13 Oct 2026: "there are centre lines and on that the squares need

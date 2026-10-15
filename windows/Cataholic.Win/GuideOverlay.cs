@@ -181,6 +181,8 @@ sealed class GuideOverlay
     /// For the trace: full-screen uploads (the grid's picture), thin-window uploads, blend-only updates (fades), window
     /// moves/resizes, and blend-only updates the system refused (then the picture is uploaded again).
     public static int Renders, StripPics, Blends, Moves, Refused;
+    /// …and what the once-per-drag setup took (ms): reading the wallpaper, painting the grid.
+    public static double LumaMs, PaintMs;
 
     GuideNative.Mon mon;
     int w, h;
@@ -208,9 +210,12 @@ sealed class GuideOverlay
         if (!grid.Shown) alpha = 0;
         if (gridPic == null || gridDrag != WindowGuides.Drags)
         {
+            var sw = System.Diagnostics.Stopwatch.StartNew();
             if (lumaDrag != WindowGuides.Drags || lumaMon != m.Handle) { luma = Wallpaper.Map(m.Px); lumaDrag = WindowGuides.Drags; lumaMon = m.Handle; }
+            LumaMs = sw.Elapsed.TotalMilliseconds; sw.Restart();
             FreeGrid();
             gridPic = Pic.Paint(w, h, mon.Scale, dc => DrawGrid(dc, guides));
+            PaintMs = sw.Elapsed.TotalMilliseconds;
             gridDrag = WindowGuides.Drags;
             if (gridPic == null) return;
             Upload(grid, gridPic, mon.Px.Left, mon.Px.Top);
