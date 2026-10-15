@@ -60,10 +60,12 @@ static class Win32
     public static bool AnyMouseButton => KeyDown(VK_LBUTTON) || KeyDown(VK_RBUTTON);
 
     /// Seconds since the last keyboard/mouse input — the cat naps once you've been away 5 minutes.
+    public static double? IdleOverride;          // test scenarios: pretend the user is here (0) or away (400)
     public static double IdleSeconds
     {
         get
         {
+            if (IdleOverride is double o) return o;
             var i = new LASTINPUTINFO { cbSize = (uint)Marshal.SizeOf<LASTINPUTINFO>() };
             return GetLastInputInfo(ref i) ? ((uint)Environment.TickCount - i.dwTime) / 1000.0 : 0;
         }

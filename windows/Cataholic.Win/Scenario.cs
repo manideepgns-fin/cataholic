@@ -8,7 +8,7 @@ namespace Cataholic;
 // `--scenario <name>`: set the cat up in a known state and drive her, so a screenshot proves a behaviour (the cloud test
 // takes them; see windows/scripts/ci-run.ps1 and the workflow). Scenarios keep prefs in memory (Prefs.Ephemeral) and
 // never touch %APPDATA%. `--trace <file>` writes one line a second: where the cat is, what she is doing.
-//   rest · drop · taskbar · zoomies · herd20 · own · menu · sleep · emotes
+//   rest · drop · taskbar · zoomies · herd20 · own · menu · sleep · emotes · reduced · idlenap
 static class Scenario
 {
     public static int Failures;
@@ -25,6 +25,8 @@ static class Scenario
     {
         Prefs.Ephemeral = true;
         Fx.Snapshot = false;
+        Fx.ReducedOverride = name == "reduced";           // the cloud desktop reports Reduce Motion; scenarios pin it
+        Win32.IdleOverride = name == "idlenap" ? 400 : 0; // …and that the user is at the PC (or away, for idlenap)
         switch (name)
         {
             case "drop": Stand(Notepad.Left + Notepad.Width / 2 - CatLayout.ScreenW / 2, 90); break;
@@ -32,6 +34,7 @@ static class Scenario
             case "zoomies": case "sleep": case "emotes": Stand(Notepad.Left + Notepad.Width / 2 - CatLayout.ScreenW / 2, Notepad.Top - CatGravity.Feet); break;
             case "own": Stand(Display.Frame.Width * 0.12, Display.Visible.Bottom - CatGravity.Feet); Prefs.Set("crewOnHerOwn", true); break;
             case "herd20": Prefs.Set("crewHerd", 20.0); break;
+            case "reduced": Stand(Notepad.Left + Notepad.Width / 2 - CatLayout.ScreenW / 2, Notepad.Top - CatGravity.Feet); Prefs.Set("crewHerd", 10.0); break;
         }
         if (name == "sleep") Prefs.Set("crewQuiet", true);
     }
@@ -53,6 +56,10 @@ static class Scenario
                 break;
             case "zoomies":
                 At(1.5, CatPanel.Zoomies);
+                break;
+            case "reduced":                      // Reduce Motion: a still pose, no zoomies, no herd, no flight
+                At(1.5, () => CatPanel.CurrentModel?.StartAction(CatModel.Action.Hi, user: true));
+                At(4, CatPanel.Zoomies);
                 break;
             case "menu":
                 At(1.5, () => CatMenuPanel.Show(new Point(Display.Frame.Width * 0.55, 30)));

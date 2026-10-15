@@ -174,7 +174,7 @@ sealed class MenuWindow : Window
     public void Build()
     {
         th = Theme.Current();
-        card.Background = Br(Color.FromArgb(0xF7, th.Bg.R, th.Bg.G, th.Bg.B));
+        card.Background = Br(Color.FromArgb(0xFF, th.Bg.R, th.Bg.G, th.Bg.B));
         card.BorderBrush = Ink(26); card.BorderThickness = new Thickness(1);
         card.Child = Content_();
         card.Measure(new Size(Width_, double.PositiveInfinity));

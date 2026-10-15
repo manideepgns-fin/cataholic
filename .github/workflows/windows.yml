@@ -37,6 +37,8 @@ jobs:
           Scenario own 3, 6, 9, 13, 18 24
           Scenario menu 3, 6 10
           Scenario sleep 3, 6, 10 14
+          Scenario reduced 3, 6, 10
+          Scenario idlenap 3, 6
           Scenario emotes 2, 5, 8, 11, 14, 17, 20, 23, 28 32
           # one log for ci-proof.sh to print
           Get-ChildItem out -Recurse -Filter log.txt | Sort-Object FullName | ForEach-Object { "== $($_.Directory.Name)"; Get-Content $_.FullName } | Set-Content out/summary.txt

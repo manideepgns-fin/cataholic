@@ -29,7 +29,9 @@ static class Rnd
 /// Motion rules: reduced-motion users get the end states with no animation.
 static class Fx
 {
-    public static bool Reduced => !System.Windows.SystemParameters.ClientAreaAnimation;
+    /// Test scenarios pin this (the cloud desktop reports Reduce Motion); null = follow Windows.
+    public static bool? ReducedOverride;
+    public static bool Reduced => ReducedOverride ?? !System.Windows.SystemParameters.ClientAreaAnimation;
     /// Test scenarios freeze nothing, but they keep prefs in memory and skip sounds.
     public static bool Snapshot = false;
 }

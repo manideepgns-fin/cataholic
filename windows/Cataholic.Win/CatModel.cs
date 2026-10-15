@@ -90,6 +90,10 @@ sealed class CatModel
     {
         ScheduleNext(initial: true);
         if (Tune.Autonomous) Later.Every(1.0, _ => TickSecond());
+        // The idle nap: the still frame is drawn awake (`look`) while you are around and asleep after 5 minutes away. A
+        // still frame never redraws by itself, so look every 15 s whether that line was crossed (one cheap check, no drawing).
+        bool away = Win32.IdleSeconds >= 300;
+        Later.Every(15, _ => { bool a = Win32.IdleSeconds >= 300; if (a != away) { away = a; Publish(); } });
     }
 
     // ── cat-life behaviour scheduler (owner, 26 Sep 2026) ──
