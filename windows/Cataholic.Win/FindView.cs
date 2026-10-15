@@ -693,7 +693,8 @@ static class FindCli
     {
         int n = flagAt + 1 < args.Length && int.TryParse(args[flagAt + 1], out var v) ? v : 200;
         if (!Console.IsOutputRedirected) AttachConsole(-1);
-        Console.OutputEncoding = new System.Text.UTF8Encoding(false);       // the table has × · — in it
-        return FindCheck.Run(n, Console.WriteLine);
+        // the table has × · — in it: write UTF-8 straight to stdout (setting Console.OutputEncoding throws without a console)
+        using var o = new System.IO.StreamWriter(Console.OpenStandardOutput(), new System.Text.UTF8Encoding(false)) { AutoFlush = true };
+        return FindCheck.Run(n, o.WriteLine);
     }
 }
