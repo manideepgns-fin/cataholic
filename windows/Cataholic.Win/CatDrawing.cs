@@ -17,6 +17,10 @@ public static class CatDrawing
     /// The caller sets any scale (zoom 2), mirroring and offset on `dc` before calling.
     public static void Draw(DrawingContext dc, CatPose p) => new Painter(dc, p).Draw();
 
+    /// Crop the drawing to the 46 × 62 box, like the Mac's panel does (the live app's window ends at the box). The Mac's
+    /// ImageRenderer sheets do NOT crop (the melted nap's tail pokes out at x = 46), so --render-coats/--render-poses switch it off.
+    public static bool CropToBox = true;
+
     /// A path in the Swift Path vocabulary: move / line / quad curve / close.
     sealed class PB
     {
@@ -147,10 +151,11 @@ public static class CatDrawing
         void Canvas(Action body, double offsetY)
         {
             dc.PushTransform(new TranslateTransform(0, offsetY));
-            dc.PushClip(new RectangleGeometry(new Rect(0, 0, 46, 62)));
+            if (CropToBox) dc.PushClip(new RectangleGeometry(new Rect(0, 0, 46, 62)));
             body();
             PopAll();
-            dc.Pop(); dc.Pop();
+            if (CropToBox) dc.Pop();
+            dc.Pop();
         }
 
         // ---- zoomies ----------------------------------------------------------------------------------------------

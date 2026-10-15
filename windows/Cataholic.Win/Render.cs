@@ -57,7 +57,8 @@ public static class Render
         ("no-bell", () => Pose(CatState.Look, p => p.Bell = false)),
     };
 
-    public static void Poses(string path)
+    public static void Poses(string path) => Sheet(() => PosesSheet(path));
+    static void PosesSheet(string path)
     {
         const double w = 92, h = 124, gapX = 14, gapY = 6, pad = 24, scale = 2;
         var coats = new[] { CatCoat.Ginger, CatCoat.PatchesCoat, CatCoat.Tux };
@@ -81,6 +82,9 @@ public static class Render
         Save(dv, W, H, scale, path);
     }
 
+    // The Mac's sheets are ImageRenderer output, which does not crop the cat to its box (see CatDrawing.CropToBox).
+    static void Sheet(Action draw) { var was = CatDrawing.CropToBox; CatDrawing.CropToBox = false; try { draw(); } finally { CatDrawing.CropToBox = was; } }
+
     static void Save(DrawingVisual dv, double W, double H, double scale, string path)
     {
         var bmp = new RenderTargetBitmap((int)(W * scale), (int)(H * scale), 96 * scale, 96 * scale, PixelFormats.Pbgra32);
@@ -91,7 +95,8 @@ public static class Render
         enc.Save(f);
     }
 
-    public static void Coats(string path)
+    public static void Coats(string path) => Sheet(() => CoatsSheet(path));
+    static void CoatsSheet(string path)
     {
         const double zoom = 2, scale = 2, w = 46 * zoom, h = 62 * zoom, gap = 14, pad = 24;
         int n = CatCoat.All.Count;
