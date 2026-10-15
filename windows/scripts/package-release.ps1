@@ -14,7 +14,7 @@ $ver = if ($Version) { $Version } else { $csproj }
 New-Item -ItemType Directory -Force $Out | Out-Null
 $Out = (Resolve-Path $Out).Path
 $pub = Join-Path $Out 'publish'
-$extra = @(); if ($Version) { $extra = "-p:Version=$Version" }
+$extra = @(); if ($Version) { $extra = @("-p:Version=$Version") }
 dotnet publish windows/Cataholic.Win -c Release -o $pub @extra
 if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed" }
 $exe = Join-Path $pub 'Cataholic.exe'

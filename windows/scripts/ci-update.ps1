@@ -21,7 +21,8 @@ function TraceText($f) { try { if (Test-Path $f) { [string](Get-Content $f -Raw)
 Check ((Cats).Count -eq 0) 'no Cataholic running before the test'
 
 # ── the feed ──
-$feed = "$Out/feed"; New-Item -ItemType Directory -Force "$feed/good", "$feed/bad" | Out-Null
+$tmp = if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { $env:TEMP }     # the feed and the test folders stay out of the uploaded artifact
+$feed = Join-Path $tmp 'feed'; New-Item -ItemType Directory -Force "$feed/good", "$feed/bad" | Out-Null
 $base = "http://127.0.0.1:$Port"
 function Asset($dir, $name) { @{ name = $name; browser_download_url = "$base/$dir/$name" } }
 function Rel($tag, $dir, $draft = $false, $pre = $false) {
@@ -61,7 +62,7 @@ function Start-Cat($folder, $feedUrl, $trace) {
 try {
   # ── 1. negative: a wrong .sha256 ──
   Log '== negative case: the .sha256 does not match the zip'
-  $badDir = "$env:RUNNER_TEMP/bad"; if (-not $env:RUNNER_TEMP) { $badDir = "$env:TEMP/bad" }
+  $badDir = Join-Path $tmp 'bad'               # Join-Path: Process.Path comes back with backslashes only
   Remove-Item $badDir -Recurse -Force -ErrorAction SilentlyContinue
   $trB = "$Out/trace-bad.txt"
   $cat = Start-Cat $badDir "$base/bad/releases.json" $trB
@@ -78,7 +79,7 @@ try {
 
   # ── 2. the real update ──
   Log '== update case: the right .sha256'
-  $goodDir = "$env:RUNNER_TEMP/good"; if (-not $env:RUNNER_TEMP) { $goodDir = "$env:TEMP/good" }
+  $goodDir = Join-Path $tmp 'good'
   Remove-Item $goodDir -Recurse -Force -ErrorAction SilentlyContinue
   $trG = "$Out/trace-good.txt"
   $cat = Start-Cat $goodDir "$base/good/releases.json" $trG
