@@ -13,7 +13,7 @@ namespace Cataholic;
 // eyes on the pointer, and no timer running (owner 28 Sep 2026: "if its idle its idle, no theatrics"); it redraws when
 // the model publishes. While an emote, the crouch or a landing squish runs, a 30 Hz clock redraws her; walks, zoomies
 // and falls redraw from the mover's own tick. Sleep mode: one slow breath every ~4 s, drawn at 12 fps.
-sealed class CatView : FrameworkElement
+sealed partial class CatView : FrameworkElement
 {
     readonly CatModel model;
     readonly DispatcherTimer clock = new();
@@ -51,6 +51,7 @@ sealed class CatView : FrameworkElement
     protected override void OnMouseLeftButtonDown(MouseButtonEventArgs e)
     {
         base.OnMouseLeftButtonDown(e);
+        if (WhisperHit(e.GetPosition(this))) { model.DismissWhisper(); e.Handled = true; return; }     // cataholic:// links: a tap on the bubble hushes it
         pressing = true; dragging = false; pressAt = Display.Pointer();
         clicks = e.ClickCount;
         CaptureMouse();
@@ -88,7 +89,8 @@ sealed class CatView : FrameworkElement
     // ── the life layer ──
     /// The resting drawing for the pose — what an emote settles into before it ends. No inbox: her pose is `sleeping`,
     /// drawn awake (`look`) while you are around, and asleep after 5 minutes away (the idle nap).
-    CatState RestSkin() => model.Airborne ? CatState.Alert : (Win32.IdleSeconds < 300 ? CatState.Look : CatState.Sleeping);
+    CatState RestSkin() => model.Airborne ? CatState.Alert : MailStore.Count > 0 ? CatState.Needs     // cataholic:// links: the sign beats the idle rule
+        : (Win32.IdleSeconds < 300 ? CatState.Look : CatState.Sleeping);
     CatState SkinState()
     {
         // An in-progress behaviour overrides the pose (running zoomies win over all).
@@ -100,7 +102,7 @@ sealed class CatView : FrameworkElement
             case CatModel.Action.Stretch: return CatState.Stretch;
             case CatModel.Action.Yawn: return CatState.Yawn;
             case CatModel.Action.Groom: return CatState.Groom;
-            case CatModel.Action.Spin: return CatState.Working;   // spin on the base pose
+            case CatModel.Action.Spin: return MailStore.Count > 0 ? CatState.Needs : CatState.Working;   // spin on the base pose
             case CatModel.Action.Look: return CatState.Look;
             case CatModel.Action.Jump: return CatState.Jump;
             case CatModel.Action.Clingy: return CatState.Clingy;
@@ -189,7 +191,7 @@ sealed class CatView : FrameworkElement
 
         var p = pose;
         p.State = running ? CatState.Running : skin;
-        p.Badge = ""; p.BlinkShut = false;
+        p.Badge = MailStore.Count > 0 ? MailStore.Count.ToString() : ""; p.BlinkShut = false;   // cataholic:// links: the sign's count
         p.BreatheY = Breathe(t);
         (p.ZRise, p.ZOpacity) = z;
         p.RunPhase = model.RunPhase;
@@ -227,6 +229,7 @@ sealed class CatView : FrameworkElement
         for (; n > 0; n--) dc.Pop();
 
         if (model.HiBubble is string h) DrawBubble(dc, box, h, f);
+        DrawWhisper(dc, box);                                     // cataholic:// links
     }
 
     /// Say-hi bubble: sits just above-left of the head (≤ 6 pt from the ear) with a small tail pointing at the cat.

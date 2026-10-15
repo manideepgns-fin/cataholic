@@ -3,7 +3,8 @@
 The same cat as the Mac app, drawn in code with C# / .NET 8 / WPF. There are no NuGet packages.
 It covers the core cat: the 8 coats, gravity on windows and the taskbar, pet and purr, emotes, zoomies, More cats,
 On her own, Sleep, the menu and a tray paw.
-Not yet ported: Find my cat, the window grid, auto-update, `cataholic://` links.
+`cataholic://sign?count=3&note=…` and `cataholic://zoomies` links work (see "Links" below).
+Not yet ported: Find my cat, the window grid, auto-update.
 
 ## Build
 
@@ -48,6 +49,19 @@ windows/scripts/ci-proof.sh   # pushes the branch, waits for the run, downloads 
 - `Win32.cs` holds every P/Invoke and `Display`, the one DPI helper.
 - Prefs are saved in `%APPDATA%\Cataholic\prefs.json` with the Mac's key names. Launch at login uses
   `HKCU\…\Run\Cataholic`.
+
+## Links (`cataholic://`)
+
+- `sign?count=3&note=Build%20failed` holds up a sign with 3 (it shows `9+` above 9) and whispers "New notification from
+  <note>" for 3 s when the count goes **up**; `sign?count=0` puts it down; `zoomies` runs zoomies. The parsing rules
+  are the Mac's (`Links.cs` ← `CataholicLinks`, `Sign.cs` ← `MailStore` and the whisper in `CrewModel`/`CrewView`).
+- Every start writes `HKCU\Software\Classes\cataholic` (`URL Protocol`, `DefaultIcon`, `shell\open\command` =
+  `"<exe>" --url "%1"`). It is per user, needs no admin and is left in place on quit.
+- Windows starts a **new process** for a link. A named mutex (`Local\Cataholic`) makes the first process the cat; a
+  later one (a link, or a double-click on the exe) passes its `--url` to her over the pipe `Cataholic.Link.<session>`
+  and exits at once. Waiting on the pipe costs no CPU.
+- Proof: `windows/scripts/ci-links.ps1` (its own script, because it acts between screenshots) opens real links with
+  `Start-Process "cataholic://…"`, starts the exe a second time and presses Esc.
 
 ## Gotchas (learned the hard way)
 

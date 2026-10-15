@@ -53,6 +53,14 @@ static class CatLayout
         CatModel.Action.Nap => new(0.0, 0.0, 46.5, 50.5),         // sitting on the pin, or melted flat when standing
         _ => new(0.0, 0.0, 41.5, 50.5),                           // yawn, groom, spin, none
     };
+    /// The resting cat WITH its pin string (drawn from y = 0): what the whisper's panel wraps (x1 42 + 4 = the box).
+    static readonly Bounds Resting = new(0.0, 0.0, 42.0, 51.0);
+    /// The whisper hangs to the cat's LEFT (it lives at the right edge) — unless the cat is parked so far left that the
+    /// bubble would not fit, when it hangs to the right. Otherwise the panel is pushed back on screen and the cat slides
+    /// sideways when it announces something. Set by the panel from where the cat sits (CatWindow.Refit).
+    public static bool WhisperOnRight;
+    /// Its fixed frame in character-box points: ends short of the sign the cat holds (x 0.5–13.5).
+    public static Bounds Whisper => new(WhisperOnRight ? 46 : -276, 12, (WhisperOnRight ? 46 : -276) + 274, 12 + 32);
     /// The 0.2 s take-off crouch before the leap (front-on, off the pin).
     static readonly Bounds Crouch = new(5.0, 9.0, 41.0, 50.0);
 
@@ -75,10 +83,11 @@ static class CatLayout
     }
 
     /// The panel for whatever is drawn: the pose (+ 4 pt) — always at least the 46×62 character box, in whole points.
-    public static Spec SpecFor(CatModel.Action a)
+    public static Spec SpecFor(CatModel.Action a, bool whisper = false)       // cataholic:// links: `whisper` grows the panel to hold the bubble
     {
-        if (a == CatModel.Action.None) return Closed;
-        var b = Drawn(a);
+        if (a == CatModel.Action.None && !whisper) return Closed;
+        var b = a == CatModel.Action.None ? Resting : Drawn(a);
+        if (whisper) b = b.Union(Whisper);
         double x0 = Math.Floor(Math.Min(b.X0 - Margin, 0)), y0 = Math.Floor(Math.Min(b.Y0 - Margin, 0));
         double x1 = Math.Ceiling(Math.Max(b.X1 + Margin, CharW)), y1 = Math.Ceiling(Math.Max(b.Y1 + Margin, CharH));
         return new Spec(x1 - x0, y1 - y0, -x0, -y0);

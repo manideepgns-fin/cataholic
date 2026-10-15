@@ -31,6 +31,9 @@ jobs:
                 -CatArgs '--scenario', $name, '--trace', "$PWD\out\$name\trace.txt"
             } catch { $script:failed += $name; Write-Host "SCENARIO $name FAILED: $_" }
           }
+          # cataholic:// links (lane win-links): real links through the shell, a second launch, Esc — its own script (ci-links.ps1)
+          try { windows/scripts/ci-links.ps1 -Exe windows/publish/Cataholic.exe -Out out/sign -Seconds 30 }
+          catch { $failed += 'sign'; Write-Host "SCENARIO sign FAILED: $_" }
           Scenario rest 3, 6, 10, 15
           Scenario drop 3, 6, 10
           Scenario taskbar 3, 6, 10

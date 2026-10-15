@@ -5,11 +5,11 @@ using System.Windows;
 namespace Cataholic;
 
 // CatModel — the cat's state: what she is doing, the movers' per-frame channels (run phase, lean…), and the scheduler
-// that makes her act on her own. Mirrors CrewModel.swift. There is no inbox on Windows (no sign, no "needs you"), so
-// her store pose is always `sleeping` — which the view draws as `look` while you are at the PC and as the idle nap after
-// 5 minutes away. Every property that changes how she is DRAWN goes through Set(): it publishes, and the panel redraws
+// that makes her act on her own. Mirrors CrewModel.swift. There is no inbox on Windows: her store pose is `sleeping`
+// — which the view draws as `look` while you are at the PC and as the idle nap after 5 minutes away — until a
+// cataholic://sign link makes it `needs` (the sign, and the whisper: Sign.cs). Every property that changes how she is DRAWN goes through Set(): it publishes, and the panel redraws
 // (and refits) once per turn of the dispatcher.
-sealed class CatModel
+sealed partial class CatModel
 {
     public enum Action { None, Hi, Big, Stretch, Yawn, Groom, Spin, Look, Jump, Clingy, Nap }
     /// Grid order (owner, 26 Sep 2026): Hi · Grow big · Stretch · Yawn · Groom · Chase tail · Look around · Jump · Nap.
@@ -83,11 +83,9 @@ sealed class CatModel
         Later.After(1.85, Publish);                                    // the "^ ^" eyes end: redraw the still frame
     }
 
-    /// Her store pose. No inbox here: always sleeping (which the view draws as `look` while you are around).
-    public bool PoseSleeping => true;
-
     public CatModel()
     {
+        InitSign();                                                    // cataholic:// links
         ScheduleNext(initial: true);
         if (Tune.Autonomous) Later.Every(1.0, _ => TickSecond());
         // The idle nap: the still frame is drawn awake (`look`) while you are around and asleep after 5 minutes away. A

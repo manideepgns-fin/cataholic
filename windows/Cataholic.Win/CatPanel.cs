@@ -657,7 +657,10 @@ sealed class CatWindow : Window
     {
         var anchor = CatPanel.roam ?? HomeAnchor();
         var vf = Display.Visible;
-        var s = CatLayout.SpecFor(model.Act);
+        // cataholic:// links: the whisper's side (the bubble needs ~280 pt (1×) at the cat's left), decided before the spec reads it
+        double roomR = vf.Right - (anchor.Left + CatLayout.ScreenW), roomL = anchor.Left - vf.Left;
+        CatLayout.WhisperOnRight = roomL < 280 * CatLayout.Zoom && roomR > roomL;
+        var s = CatLayout.SpecFor(model.Act, model.Whisper != null);
         bool tucked = CatPanel.roam == null && CatMove.Docked && !model.IsOut;   // hangs off the right edge on purpose
         // The empty box below the feet may hang off the bottom of the screen (a cat standing on the floor with the taskbar
         // hidden): clamping it back lifted the cat for as long as a pose was showing.

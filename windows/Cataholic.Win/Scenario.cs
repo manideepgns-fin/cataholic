@@ -8,7 +8,7 @@ namespace Cataholic;
 // `--scenario <name>`: set the cat up in a known state and drive her, so a screenshot proves a behaviour (the cloud test
 // takes them; see windows/scripts/ci-run.ps1 and the workflow). Scenarios keep prefs in memory (Prefs.Ephemeral) and
 // never touch %APPDATA%. `--trace <file>` writes one line a second: where the cat is, what she is doing.
-//   rest · drop · taskbar · zoomies · herd20 · herd100 · own · menu · sleep · emotes · reduced · idlenap · touch
+//   rest · drop · taskbar · zoomies · herd20 · herd100 · own · menu · sleep · emotes · reduced · idlenap · touch · sign
 static class Scenario
 {
     public static int Failures;
@@ -35,6 +35,8 @@ static class Scenario
             case "own": Stand(Display.Frame.Width * 0.12, Display.Visible.Bottom - CatGravity.Feet); Prefs.Set("crewOnHerOwn", true); break;
             case "reduced": Stand(Notepad.Left + Notepad.Width / 2 - CatLayout.ScreenW / 2, Notepad.Top - CatGravity.Feet); Prefs.Set("crewHerd", 10.0); break;
         }
+        // cataholic:// links: she stands on Notepad far enough right (left 600) that the whisper hangs clean to her left
+        if (name == "sign") Stand(600, Notepad.Top - CatGravity.Feet);
         if (name == "sleep") Prefs.Set("crewQuiet", true);
     }
     static void Stand(double left, double top)
@@ -122,6 +124,7 @@ static class Scenario
             var fl = r is Rect rr ? CatGravity.FloorBelow(rr.Left + rr.Width / 2, rr.Top + CatGravity.Feet - 3, CatGravity.Windows()) : default;
             msg += $" box={(r is Rect b ? $"{b.Left:0},{b.Top:0}" : "-")} feet={(r is Rect f ? $"{f.Top + CatGravity.Feet:0}" : "-")} floor={fl.Y:0}/{(fl.Window?.ToString() ?? "taskbar")}"
                  + $" hang={CatPanel.Hanging} air={m.Airborne} act={m.Act} run={m.RunFacing} zoom={CatPanel.Zooming} busy={CatPanel.Busy}"
+                 + $" sign={MailStore.Count} whisper={(m.Whisper != null ? 1 : 0)}"
                  + $" herd={CatHerd.Shared.Cats.Count} ticks={CatHerd.Shared.Ticks} win={CatHerd.Shared.Windows} moves={CatHerd.Shared.Moves} draws={CatHerd.Shared.Draws} moveMs={CatHerd.Shared.MoveMs:0} drawMs={CatHerd.Shared.DrawMs:0} idle={Win32.IdleSeconds:0}";
         }
         trace.WriteLine(msg);
