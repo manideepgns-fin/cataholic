@@ -64,6 +64,7 @@ sealed class CatHerd
         window.Rebuild(Cats);
         CatPanel.Raise();                                                   // the main cat stays on top of its herd
         last = Clock;
+        wins = CatGravity.Windows(); winsAt = last;                         // floors known before the first cat lands
         timer = Later.Every(1.0 / 30, _ => Step());
     }
 
@@ -169,7 +170,7 @@ sealed class HerdCanvas : FrameworkElement
 
     public void Rebuild(List<CatHerd.Cat> cats)
     {
-        foreach (var v in visuals) { RemoveVisualChild(v); RemoveLogicalChild(v); }
+        foreach (var v in visuals) RemoveVisualChild(v);
         visuals.Clear();
         foreach (var _ in cats) { var v = new DrawingVisual(); visuals.Add(v); AddVisualChild(v); }
         foreach (var c in cats) c.Dirty = true;

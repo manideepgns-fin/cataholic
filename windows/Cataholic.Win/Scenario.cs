@@ -8,7 +8,7 @@ namespace Cataholic;
 // `--scenario <name>`: set the cat up in a known state and drive her, so a screenshot proves a behaviour (the cloud test
 // takes them; see windows/scripts/ci-run.ps1 and the workflow). Scenarios keep prefs in memory (Prefs.Ephemeral) and
 // never touch %APPDATA%. `--trace <file>` writes one line a second: where the cat is, what she is doing.
-//   rest · drop · taskbar · zoomies · herd20 · own · menu · sleep · emotes · reduced · idlenap
+//   rest · drop · taskbar · zoomies · herd20 · own · menu · sleep · emotes · reduced · idlenap · touch
 static class Scenario
 {
     public static int Failures;
@@ -57,6 +57,15 @@ static class Scenario
             case "zoomies":
                 At(1.5, CatPanel.Zoomies);
                 break;
+            case "touch":
+                // real mouse input at the cat: a click (pet), then press-drag-release (carry her to the left of the screen and let go:
+                // she falls to the taskbar), then a right-click on her (the menu)
+                At(1.5, () => { MoveTo(CatCenter()); Click(false); });
+                At(4.0, () => { MoveTo(CatCenter()); Mouse(Win32.MOUSEEVENTF_LEFTDOWN); });
+                At(4.3, () => Drag(new Point(170, 330), 0.9));
+                At(5.5, () => Mouse(Win32.MOUSEEVENTF_LEFTUP));
+                At(9.0, () => { MoveTo(CatCenter()); Click(true); });
+                break;
             case "reduced":                      // Reduce Motion: a still pose, no zoomies, no herd, no flight
                 At(1.5, () => CatPanel.CurrentModel?.StartAction(CatModel.Action.Hi, user: true));
                 At(4, CatPanel.Zoomies);
@@ -78,6 +87,27 @@ static class Scenario
                 break;
             }
         }
+    }
+
+    // ── synthetic mouse (the cat is real: these go through the OS like a hand would) ──
+    static Point CatCenter() => CatPanel.CatCenter() ?? new Point(0, 0);
+    static void MoveTo(Point dip) => Win32.SetCursorPos(Display.Px(dip.X), Display.Px(dip.Y));
+    static void Mouse(uint flag) => Win32.mouse_event(flag, 0, 0, 0, UIntPtr.Zero);
+    static void Click(bool right)
+    {
+        Mouse(right ? Win32.MOUSEEVENTF_RIGHTDOWN : Win32.MOUSEEVENTF_LEFTDOWN);
+        Later.After(0.08, () => Mouse(right ? Win32.MOUSEEVENTF_RIGHTUP : Win32.MOUSEEVENTF_LEFTUP));
+    }
+    /// Slide the pointer to `to` over `secs` (30 steps a second), button held by the caller.
+    static void Drag(Point to, double secs)
+    {
+        var from = Display.Pointer(); var t0 = DateTime.Now;
+        Later.Every(1.0 / 30, t =>
+        {
+            double u = Math.Min((DateTime.Now - t0).TotalSeconds / secs, 1);
+            MoveTo(new Point(from.X + (to.X - from.X) * u, from.Y + (to.Y - from.Y) * u));
+            if (u >= 1) t.Cancel();
+        });
     }
 
     static void Trace(string msg)
