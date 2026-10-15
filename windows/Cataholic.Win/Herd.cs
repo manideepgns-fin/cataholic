@@ -132,7 +132,7 @@ sealed class CatHerd
         if (r < 45) { c.Mode = Mode.Walk; c.Target = Rnd.In(lo, hi); }
         else if (r < 72) { c.Mode = Mode.Nap; c.Until = now + Rnd.In(6, 20); }
         else if (r < 84) { c.Mode = Mode.Zoom; c.Target = Math.Abs(c.X - lo) > Math.Abs(c.X - hi) ? lo : hi; }
-        else { c.Mode = Mode.Sit; c.Until = now + Rnd.In(2, 6); if (Rnd.Bool()) c.Facing *= -1; }
+        else { c.Mode = Mode.Sit; c.Until = now + Rnd.In(2, 6); if (Rnd.Bool()) { c.Facing *= -1; c.Dirty = true; } }
     }
 }
 
