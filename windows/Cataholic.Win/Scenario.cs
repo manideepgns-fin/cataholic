@@ -33,8 +33,6 @@ static class Scenario
             case "taskbar": Stand(80, 90); break;
             case "zoomies": case "sleep": case "emotes": Stand(Notepad.Left + Notepad.Width / 2 - CatLayout.ScreenW / 2, Notepad.Top - CatGravity.Feet); break;
             case "own": Stand(Display.Frame.Width * 0.12, Display.Visible.Bottom - CatGravity.Feet); Prefs.Set("crewOnHerOwn", true); break;
-            case "herd20": Prefs.Set("crewHerd", 20.0); break;
-            case "herd100": Prefs.Set("crewHerd", 100.0); break;
             case "reduced": Stand(Notepad.Left + Notepad.Width / 2 - CatLayout.ScreenW / 2, Notepad.Top - CatGravity.Feet); Prefs.Set("crewHerd", 10.0); break;
         }
         if (name == "sleep") Prefs.Set("crewQuiet", true);
@@ -66,6 +64,9 @@ static class Scenario
                 At(4.3, () => Drag(new Point(170, 330), 0.9));
                 At(5.5, () => Mouse(Win32.MOUSEEVENTF_LEFTUP));
                 At(9.0, () => { MoveTo(CatCenter()); Click(true); });
+                break;
+            case "herd20": case "herd100":       // the herd rains in at 1.4 s, so the 2 s shot catches it in the air
+                At(1.4, () => CatHerd.Set(name == "herd20" ? 20 : 100));
                 break;
             case "reduced":                      // Reduce Motion: a still pose, no zoomies, no herd, no flight
                 At(1.5, () => CatPanel.CurrentModel?.StartAction(CatModel.Action.Hi, user: true));
@@ -121,7 +122,7 @@ static class Scenario
             var fl = r is Rect rr ? CatGravity.FloorBelow(rr.Left + rr.Width / 2, rr.Top + CatGravity.Feet - 3, CatGravity.Windows()) : default;
             msg += $" box={(r is Rect b ? $"{b.Left:0},{b.Top:0}" : "-")} feet={(r is Rect f ? $"{f.Top + CatGravity.Feet:0}" : "-")} floor={fl.Y:0}/{(fl.Window?.ToString() ?? "taskbar")}"
                  + $" hang={CatPanel.Hanging} air={m.Airborne} act={m.Act} run={m.RunFacing} zoom={CatPanel.Zooming} busy={CatPanel.Busy}"
-                 + $" herd={CatHerd.Shared.Cats.Count} win={CatHerd.Shared.Windows} moves={CatHerd.Shared.Moves} draws={CatHerd.Shared.Draws} moveMs={CatHerd.Shared.MoveMs:0} drawMs={CatHerd.Shared.DrawMs:0} idle={Win32.IdleSeconds:0}";
+                 + $" herd={CatHerd.Shared.Cats.Count} ticks={CatHerd.Shared.Ticks} win={CatHerd.Shared.Windows} moves={CatHerd.Shared.Moves} draws={CatHerd.Shared.Draws} moveMs={CatHerd.Shared.MoveMs:0} drawMs={CatHerd.Shared.DrawMs:0} idle={Win32.IdleSeconds:0}";
         }
         trace.WriteLine(msg);
     }

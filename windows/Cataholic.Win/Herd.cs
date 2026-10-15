@@ -40,8 +40,8 @@ sealed class CatHerd
 
     public static readonly CatHerd Shared = new();
     public List<Cat> Cats { get; private set; } = new();
-    /// For the trace, since the herd was last rebuilt: windows made, window moves, picture swaps, and the time (ms) in the last two.
-    public int Windows, Moves, Draws;
+    /// For the trace, since the herd was last rebuilt: ticks run, windows made, window moves, picture swaps, and the time (ms) in the last two.
+    public int Ticks, Windows, Moves, Draws;
     public double MoveMs, DrawMs;
     DispatcherTimer? timer;
     List<CatGravity.Win> wins = new();
@@ -56,7 +56,7 @@ sealed class CatHerd
     {
         timer?.Stop(); timer = null;
         foreach (var c in Cats) c.Win?.Close();
-        Windows = Moves = Draws = 0; MoveMs = DrawMs = 0;
+        Ticks = Windows = Moves = Draws = 0; MoveMs = DrawMs = 0;
         HerdFrames.Clear();
         int n = CatPrefs.Quiet || Fx.Reduced || !CatPrefs.ShowCrew ? 0 : Count;
         if (n <= 0) { Cats = new(); return; }
@@ -79,6 +79,7 @@ sealed class CatHerd
 
     void Step()
     {
+        Ticks++;
         double now = Clock, dt = Math.Min(now - last, 1.0 / 15); last = now;
         bool floors = now - winsAt > FloorsEvery;
         if (floors) { wins = CatGravity.Windows(); winsAt = now; }                    // floors, once a second
