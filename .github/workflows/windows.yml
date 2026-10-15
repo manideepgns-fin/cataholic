@@ -14,6 +14,13 @@ jobs:
         with: { dotnet-version: '8.0.x' }
       - name: Publish
         run: dotnet publish windows/Cataholic.Win -c Release -o windows/publish
+      # Find my cat: deal 60 layouts per level per coat and fail the build if any placement of her (or of a lookalike) is unfair
+      - name: Find my cat fairness check
+        run: |
+          New-Item -ItemType Directory -Force out | Out-Null
+          $p = Start-Process windows/publish/Cataholic.exe -ArgumentList '--check-find', '60' -PassThru -Wait -RedirectStandardOutput "$PWD\out\check-find.txt"
+          Get-Content out/check-find.txt
+          if ($p.ExitCode -ne 0) { throw "Find my cat fairness check FAILED (exit $($p.ExitCode))" }
       - name: Render the coats
         run: |
           New-Item -ItemType Directory -Force out | Out-Null
@@ -47,6 +54,7 @@ jobs:
           Scenario idlenap 3, 6
           Scenario touch 2, 5, 8, 11 14
           Scenario emotes 2, 5, 8, 11, 14, 17, 20, 23, 28 32
+          Scenario find 4, 6, 8, 10, 12, 15, 17, 19, 21, 24, 26, 30, 33, 39 44     # Find my cat (find/*.png are the window drawn off-screen)
           # one log for ci-proof.sh to print
           Get-ChildItem out -Recurse -Filter log.txt | Sort-Object FullName | ForEach-Object { "== $($_.Directory.Name)"; Get-Content $_.FullName } | Set-Content out/summary.txt
           Copy-Item out/summary.txt out/log.txt -Force

@@ -2,9 +2,9 @@
 
 The same cat as the Mac app, drawn in code with C# / .NET 8 / WPF. There are no NuGet packages.
 It covers the core cat: the 8 coats, gravity on windows and the taskbar, pet and purr, emotes, zoomies, More cats,
-On her own, Sleep, the menu and a tray paw.
+On her own, Sleep, the menu, a tray paw and Find my cat (double-click her).
 `cataholic://sign?count=3&note=…` and `cataholic://zoomies` links work (see "Links" below).
-Not yet ported: Find my cat, auto-update.
+Not yet ported: auto-update.
 
 **The window grid is Mac-only, on purpose** (owner, 15 Oct 2026). Windows already snaps windows (Snap Layouts, Snap
 Assist, PowerToys FancyZones). A port needs WinEvent hooks on every window and a full-screen overlay while you drag,
@@ -28,8 +28,9 @@ The app compiles on a Mac, but it only runs on Windows.
 
 1. It renders `coats.png` and `poses.png` (`--render-coats`, `--render-poses`). Compare them with the Mac's
    `docs/cats.png`.
-2. It runs every test scenario next to a Notepad window (`--scenario rest|drop|taskbar|zoomies|herd20|herd100|own|menu|sleep|emotes|reduced|idlenap|touch|sign`).
+2. It runs every test scenario next to a Notepad window (`--scenario rest|drop|taskbar|zoomies|herd20|herd100|own|menu|sleep|emotes|reduced|idlenap|touch|sign|find`).
 3. It takes screenshots and logs the CPU and memory of the cat process.
+4. `Cataholic.exe --check-find 60` (its own step) deals 60 Find-my-cat layouts per level per coat and fails the build if any is unfair.
 
 ```bash
 windows/scripts/ci-proof.sh   # pushes the branch, waits for the run, downloads to windows/ci-out/<sha>/
@@ -50,6 +51,7 @@ windows/scripts/ci-proof.sh   # pushes the branch, waits for the run, downloads 
   - `Own` ← `CrewOwn`
   - `Sound` ← `CrewSound`
   - `CatMenu` ← `CatMenu`
+  - Find my cat: `FindMyCat.cs` (round, game, fairness check) + `FindScenes.cs` (places, props, spots) ← `FindMyCat.swift` + `FindScenes.swift`; `FindView.cs` (window, camera, layers), `FindArt.cs` (the pictures), `FindGfx.cs` (a SwiftUI-Canvas-shaped kit over WPF), `FindRandom.cs` (Swift's seeded random, step for step)
 - `Win32.cs` holds every P/Invoke and `Display`, the one DPI helper.
 - Prefs are saved in `%APPDATA%\Cataholic\prefs.json` with the Mac's key names. Launch at login uses
   `HKCU\…\Run\Cataholic`.
@@ -81,3 +83,8 @@ windows/scripts/ci-proof.sh   # pushes the branch, waits for the run, downloads 
   through `Display`. CI only runs at 100% scale, so scaled displays are untested.
 - **Memory:** a WPF process starts at about 200 MB working set. That is the .NET and WPF baseline. Don't quote the
   Mac app's "~30 MB" for Windows.
+- **Find my cat layouts are the Mac's, bit for bit:** `FindRandom` follows Swift's `random(in:)`, `shuffled` and `randomElement`
+  exactly, so a seed gives the Mac's layout (checked cat by cat against a scratch Mac build, and the `--check-find` table is
+  identical). Note that on the Mac `CGPoint(x: .random(in: 24...1076), …)` picks the `Int` initialiser, so open spots are whole numbers.
+- **Find my cat on a small screen:** the window is 1100 × 704 DIPs; where the work area is smaller (CI is 1024 × 728) the whole
+  window is scaled down to fit instead of being clipped.

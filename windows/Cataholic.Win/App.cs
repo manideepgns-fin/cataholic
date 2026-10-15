@@ -12,6 +12,8 @@ namespace Cataholic;
 //   --scenario <name>           set the cat up in a known state for a screenshot (Scenario.cs); prefs stay in memory
 //   --url <cataholic://…>       a link (the registered handler passes it; see Links.cs)
 //   --trace <file>              with a scenario: one line a second — where the cat is and what she is doing
+//   --check-find [N]            Find my cat: the fairness check over N layouts per level per coat (default 200), then quit
+//   --find-level N --find-seed S  Find my cat: the first game starts on this level / layout (tests)
 public static class Program
 {
     [STAThread]
@@ -22,6 +24,11 @@ public static class Program
             int i = Array.IndexOf(args, name);
             return i >= 0 && i + 1 < args.Length ? args[i + 1] : null;
         }
+        // Find my cat: `--check-find [N]` is the fairness self-check (no window; exit 0 only if every layout is fair);
+        // `--find-level N` / `--find-seed S` start the first game there (tests)
+        if (Array.IndexOf(args, "--check-find") is int cf && cf >= 0) return FindCli.Check(args, cf);
+        if (int.TryParse(Arg("--find-level"), out var findLevel)) FindMyCat.TestLevel = findLevel;
+        if (ulong.TryParse(Arg("--find-seed"), out var findSeed)) FindMyCat.TestSeed = findSeed;
         // cataholic:// links: one cat per user. A second launch (a link, or a double-click on the exe) hands its --url to the
         // first and exits at once. Rendering is no cat, and only the sign scenario takes part (the CI proof drives real links).
         bool renders = Arg("--render-coats") != null || Arg("--render-poses") != null;

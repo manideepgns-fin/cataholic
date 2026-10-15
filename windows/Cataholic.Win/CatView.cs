@@ -43,7 +43,7 @@ sealed partial class CatView : FrameworkElement
         InvalidateVisual();
     }
 
-    // ── mouse: click = pet · drag ≥ 4 pt = carry her · right-click = the menu · double-click: Find my cat (later) ──
+    // ── mouse: click = pet · drag ≥ 4 pt = carry her · right-click = the menu · double-click: Find my cat ──
     bool pressing, dragging;
     Point pressAt;
     protected override void OnMouseEnter(MouseEventArgs e) { base.OnMouseEnter(e); model.Hovered = true; CatPanel.Slip(); }   // on her own: knocked off a perch
@@ -73,7 +73,7 @@ sealed partial class CatView : FrameworkElement
         if (!pressing) return;
         pressing = false; ReleaseMouseCapture();
         if (dragging) { dragging = false; CatMove.End(); return; }
-        if (clicks >= 2) return;                                           // a double-click opens Find my cat on the Mac — not built here yet
+        if (clicks >= 2) { model.StopAction(); CatPanel.StopLife(); CatSound.Meow(); FindMyCat.Open(); return; }   // Find my cat: a double-click opens the game (CrewPanel.openGame)
         // click = pet it (owner 27 Sep 2026) — or catch it mid-run. Any autonomous action stops instantly — the click wins.
         if (CatPanel.Zooming) { CatSound.Meow(); CatPanel.CatchCat(); return; }
         model.StopAction(); CatPanel.StopLife();
