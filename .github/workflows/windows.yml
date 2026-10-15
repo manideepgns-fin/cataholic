@@ -20,7 +20,28 @@ jobs:
           $p = Start-Process windows/publish/Cataholic.exe -ArgumentList '--render-coats', "$PWD\out\coats.png" -PassThru -Wait
           if ($p.ExitCode -ne 0 -or -not (Test-Path out/coats.png)) { throw "render failed ($($p.ExitCode))" }
       - name: Run on the desktop and take screenshots
-        run: windows/scripts/ci-run.ps1 -Exe windows/publish/Cataholic.exe -Out out
+        run: |
+          # one run per scenario (--scenario in App.cs), each into its own out/<name>/ folder: screenshots, log.txt, trace.txt
+          $failed = @()
+          function Scenario($name, [int[]]$shots, [int]$secs = 20) {
+            try {
+              windows/scripts/ci-run.ps1 -Exe windows/publish/Cataholic.exe -Out "out/$name" -Seconds $secs -ShotsAt $shots `
+                -CatArgs '--scenario', $name, '--trace', "$PWD\out\$name\trace.txt"
+            } catch { $script:failed += $name; Write-Host "SCENARIO $name FAILED: $_" }
+          }
+          Scenario rest 3, 6, 10, 15
+          Scenario drop 3, 6, 10
+          Scenario taskbar 3, 6, 10
+          Scenario zoomies 3, 4, 5, 7 14
+          Scenario herd20 2, 4, 6, 10, 15
+          Scenario own 3, 6, 9, 13, 18 24
+          Scenario menu 3, 6 10
+          Scenario sleep 3, 6, 10 14
+          Scenario emotes 2, 5, 8, 11, 14, 17, 20, 23, 28 32
+          # one log for ci-proof.sh to print
+          Get-ChildItem out -Recurse -Filter log.txt | Sort-Object FullName | ForEach-Object { "== $($_.Directory.Name)"; Get-Content $_.FullName } | Set-Content out/summary.txt
+          Copy-Item out/summary.txt out/log.txt -Force
+          if ($failed) { throw "failed scenarios: $failed" }
       - uses: actions/upload-artifact@v4
         if: always()
         with: { name: proof, path: out/ }

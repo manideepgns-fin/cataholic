@@ -8,6 +8,8 @@ namespace Cataholic;
 // Cataholic for Windows — the app shell. Flags (used by CI and the README image):
 //   --render-coats <file.png>   draw every coat, sitting then napping, into one image, then quit
 //   --quit-after <seconds>      run normally, then quit (the cloud test takes screenshots meanwhile)
+//   --scenario <name>           set the cat up in a known state for a screenshot (Scenario.cs); prefs stay in memory
+//   --trace <file>              with a scenario: one line a second — where the cat is and what she is doing
 public static class Program
 {
     [STAThread]
@@ -26,7 +28,18 @@ public static class Program
             t.Tick += (_, _) => app.Shutdown();
             t.Start();
         }
-        app.Startup += (_, _) => Shell.Start();
-        return app.Run();
+        // A cat that hits a bug keeps living; the bug goes to stderr, and a scenario run ends non-zero so CI turns red.
+        app.DispatcherUnhandledException += (_, e) =>
+        {
+            Scenario.Failures++;
+            Console.Error.WriteLine(e.Exception);
+            e.Handled = true;
+        };
+        string? scenario = Arg("--scenario"), trace = Arg("--trace");
+        if (scenario != null) Prefs.Ephemeral = true;                  // a test run never reads or writes the real prefs
+        app.Startup += (_, _) => Shell.Start(scenario, trace);
+        app.Exit += (_, _) => Shell.Stop();
+        int code = app.Run();
+        return code != 0 ? code : (Scenario.Failures > 0 ? 3 : 0);
     }
 }
