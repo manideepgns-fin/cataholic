@@ -19,6 +19,8 @@ jobs:
           New-Item -ItemType Directory -Force out | Out-Null
           $p = Start-Process windows/publish/Cataholic.exe -ArgumentList '--render-coats', "$PWD\out\coats.png" -PassThru -Wait
           if ($p.ExitCode -ne 0 -or -not (Test-Path out/coats.png)) { throw "render failed ($($p.ExitCode))" }
+          $p = Start-Process windows/publish/Cataholic.exe -ArgumentList '--render-poses', "$PWD\out\poses.png" -PassThru -Wait
+          if ($p.ExitCode -ne 0 -or -not (Test-Path out/poses.png)) { throw "poses render failed ($($p.ExitCode))" }
       - name: Run on the desktop and take screenshots
         run: windows/scripts/ci-run.ps1 -Exe windows/publish/Cataholic.exe -Out out
       - uses: actions/upload-artifact@v4
