@@ -211,6 +211,7 @@ sealed class FindWindow : Window
 
         // ── wiring ──
         Game.Changed += OnGame;
+        FindMultiply.FailedEvent += OnShaderFailed;
         Camera.Changed += OnCamera;
         viewport.MouseLeftButtonDown += OnDown; viewport.MouseMove += OnMove; viewport.MouseLeftButtonUp += OnUp;
         viewport.MouseLeave += (_, _) => Camera.Pointer = null;
@@ -251,7 +252,7 @@ sealed class FindWindow : Window
     void OnClosed(object? s, EventArgs e)
     {
         clock?.Stop(); clock = null;
-        Game.Changed -= OnGame; Camera.Changed -= OnCamera;
+        Game.Changed -= OnGame; Camera.Changed -= OnCamera; FindMultiply.FailedEvent -= OnShaderFailed;
         Content = null;
         stage.Children.Clear(); viewport.Children.Clear(); root.Children.Clear();
     }
@@ -350,7 +351,7 @@ sealed class FindWindow : Window
             scene.Redraw();
         }
         nightLights.Visibility = R.Night ? Visibility.Visible : Visibility.Collapsed;
-        scene.Effect = R.Night && !playing ? multiply : null;                 // the moonlit tint once the round is over
+        scene.Effect = R.Night && !playing && !FindMultiply.Failed ? multiply : null;                 // the moonlit tint once the round is over
         nightLights.Redraw(); darkness.Redraw(); marks.Redraw(); spot.Redraw(); pop.Redraw(); sparks.Redraw();
         bool over = !playing, found = Game.Phase == FindGame.Phases.Found;
         int level = R.Level;
@@ -371,6 +372,7 @@ sealed class FindWindow : Window
         else if (!Game.Celebrating && clock != null) { clock.Stop(); clock = null; sparks.Redraw(); pop.Redraw(); }
     }
 
+    void OnShaderFailed() { scene.Effect = null; darkness.Redraw(); }
     bool shown;
     void OnCamera(bool animated)
     {
@@ -503,7 +505,10 @@ sealed class FindWindow : Window
             g.Dc.DrawRectangle(brush, null, full);
             g.Stroke(Gfx.Ell(lantern.X - R * 0.98, lantern.Y - R * 0.98, R * 1.96, R * 1.96), Gfx.Op(Gfx.C(1, 0.86, 0.5), 0.18), 3 / Camera.Z);
         }
-        // (once the round is over the whole kingdom takes the moonlit tint instead: FindMultiply on the scene layer, set in OnGame)
+        // Once the round is over the whole kingdom takes the moonlit tint instead: FindMultiply on the scene layer (set in
+        // OnGame). Only if the machine rejects that shader: the Mac's (0.40, 0.44, 0.68) multiply as a translucent navy,
+        // which is the same on white and close on mid tones.
+        else if (FindMultiply.Failed) g.Dc.DrawRectangle(Gfx.B(Gfx.Op(Gfx.C(0.143, 0.2, 0.543), 0.7)), null, full);
     }
 
     /// The paw prints and hints: glued to the art (scene points) but kept at their screen size whatever the zoom.
@@ -721,7 +726,7 @@ sealed class FindMultiply : ShaderEffect
         {
             0xFFFF0200,                                   // ps_2_0
             0x0200001F, 0x80000000, 0xB0030000,           // dcl t0.xy
-            0x0200001F, 0xA0000000, 0xA00F0800,           // dcl_2d s0
+            0x0200001F, 0x90000000, 0xA00F0800,           // dcl_2d s0 (D3DSTT_2D = 2 << 27)
             0x03000042, 0x800F0000, 0xB0E40000, 0xA0E40800, // texld r0, t0, s0
             0x03000005, 0x800F0000, 0x80E40000, 0xA0E40000, // mul r0, r0, c0
             0x02000001, 0x800F0800, 0x80E40000,           // mov oC0, r0
@@ -731,8 +736,12 @@ sealed class FindMultiply : ShaderEffect
         for (int i = 0; i < t.Length; i++) BitConverter.GetBytes(t[i]).CopyTo(bytes, i * 4);
         var ps = new PixelShader();
         ps.SetStreamSource(new System.IO.MemoryStream(bytes));
+        // a machine that refuses it must not crash the game: fall back to the translucent navy (FindWindow.PaintDarkness)
+        PixelShader.InvalidPixelShaderEncountered += (_, _) => { Failed = true; FailedEvent?.Invoke(); };
         return ps;
     }
+    public static bool Failed;
+    public static event Action? FailedEvent;
     public static readonly DependencyProperty InputProperty = RegisterPixelShaderSamplerProperty("Input", typeof(FindMultiply), 0);
     public static readonly DependencyProperty FactorProperty = DependencyProperty.Register("Factor", typeof(System.Windows.Media.Media3D.Point4D), typeof(FindMultiply),
         new UIPropertyMetadata(new System.Windows.Media.Media3D.Point4D(0.40, 0.44, 0.68, 1), PixelShaderConstantCallback(0)));
