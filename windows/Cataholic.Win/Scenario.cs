@@ -8,7 +8,7 @@ namespace Cataholic;
 // `--scenario <name>`: set the cat up in a known state and drive her, so a screenshot proves a behaviour (the cloud test
 // takes them; see windows/scripts/ci-run.ps1 and the workflow). Scenarios keep prefs in memory (Prefs.Ephemeral) and
 // never touch %APPDATA%. `--trace <file>` writes one line a second: where the cat is, what she is doing.
-//   rest · drop · taskbar · zoomies · herd20 · herd100 · own · menu · sleep · emotes · reduced · idlenap · touch · sign
+//   rest · drop · taskbar · zoomies · herd20 · herd100 · own · menu · sleep · emotes · reduced · idlenap · touch · sign · grid · gridoutline
 static class Scenario
 {
     public static int Failures;
@@ -38,6 +38,7 @@ static class Scenario
         // cataholic:// links: she stands on Notepad far enough right (left 600) that the whisper hangs clean to her left
         if (name == "sign") Stand(600, Notepad.Top - CatGravity.Feet);
         if (name == "sleep") Prefs.Set("crewQuiet", true);
+        if (name is "grid" or "gridoutline") Prefs.Set("windowGuides", true);          // window grid: on from the start
     }
     static void Stand(double left, double top)
     {
@@ -74,6 +75,7 @@ static class Scenario
                 At(1.5, () => CatPanel.CurrentModel?.StartAction(CatModel.Action.Hi, user: true));
                 At(4, CatPanel.Zoomies);
                 break;
+            case "grid": case "gridoutline": GridScenario.Run(name == "grid", At, Notepad, s => Trace(s)); break;           // window grid: drag Notepad with real input (GridScenario.cs)
             case "menu":
                 At(1.5, () => CatMenuPanel.Show(new Point(Display.Frame.Width * 0.55, 30)));
                 break;
@@ -125,7 +127,7 @@ static class Scenario
             msg += $" box={(r is Rect b ? $"{b.Left:0},{b.Top:0}" : "-")} feet={(r is Rect f ? $"{f.Top + CatGravity.Feet:0}" : "-")} floor={fl.Y:0}/{(fl.Window?.ToString() ?? "taskbar")}"
                  + $" hang={CatPanel.Hanging} air={m.Airborne} act={m.Act} run={m.RunFacing} zoom={CatPanel.Zooming} busy={CatPanel.Busy}"
                  + $" sign={MailStore.Count} whisper={(m.Whisper != null ? 1 : 0)}"
-                 + $" herd={CatHerd.Shared.Cats.Count} ticks={CatHerd.Shared.Ticks} win={CatHerd.Shared.Windows} moves={CatHerd.Shared.Moves} draws={CatHerd.Shared.Draws} moveMs={CatHerd.Shared.MoveMs:0} drawMs={CatHerd.Shared.DrawMs:0} idle={Win32.IdleSeconds:0}";
+                 + $" herd={CatHerd.Shared.Cats.Count} ticks={CatHerd.Shared.Ticks} win={CatHerd.Shared.Windows} moves={CatHerd.Shared.Moves} draws={CatHerd.Shared.Draws} moveMs={CatHerd.Shared.MoveMs:0} drawMs={CatHerd.Shared.DrawMs:0} idle={Win32.IdleSeconds:0} " + WindowGuides.Trace;
         }
         trace.WriteLine(msg);
     }
