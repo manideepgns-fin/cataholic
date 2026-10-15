@@ -43,7 +43,10 @@ $wrong = ('0' * 64); if ($realHash -eq $wrong) { $wrong = ('f' * 64) }
 Log "feed: real sha256 $realHash; the bad feed says $wrong"
 $srv = Start-Process python -ArgumentList '-m', 'http.server', $Port, '--bind', '127.0.0.1', '--directory', $feed -PassThru -WindowStyle Hidden `
   -RedirectStandardOutput "$Out/server-out.txt" -RedirectStandardError "$Out/server-err.txt"
-Check (WaitFor 20 { try { (Invoke-WebRequest "$base/good/releases.json" -UseBasicParsing).StatusCode -eq 200 } catch { $false } }) 'the local feed answers'
+# a cold runner can take over 20 s to start python (run 38746404496: the feed came up after the check gave up) — wait up to 90 s
+$feedT0 = Get-Date
+Check (WaitFor 90 { try { (Invoke-WebRequest "$base/good/releases.json" -UseBasicParsing -TimeoutSec 5).StatusCode -eq 200 } catch { $false } }) 'the local feed answers'
+Log ("feed came up after {0:0.0} s" -f ((Get-Date) - $feedT0).TotalSeconds)
 Log ("good/releases.json:`n" + (Get-Content "$feed/good/releases.json" -Raw))
 
 function Shot($name) {

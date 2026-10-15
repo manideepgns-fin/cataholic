@@ -3,6 +3,8 @@
 name: windows
 on:
   push:
+    # branches only: a release tag (win-v*) is windows-release.yml's job, and the same commit was already tested on its branch
+    branches: ['**']
     paths: ['windows/**', '.github/workflows/windows.yml']
   workflow_dispatch:
 jobs:
