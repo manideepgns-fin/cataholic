@@ -7,7 +7,7 @@ namespace Cataholic;
 
 // `--scenario grid` / `gridoutline` (window grid): the grid is on from the start (Scenario.Prepare), then Notepad is dragged by its
 // title bar with REAL input — SetCursorPos + mouse_event, as the `touch` scenario does for the cat — slowly across the
-// grid, and let go with its left edge on the centre line. The cloud test shoots: 3 s and 6 s (grid on, nothing moving:
+// grid, and let go with its left edge on the centre line. The trace has the cat's CPU seconds (`gcpu t=…`) from 6 s to 16.5 s. The cloud test shoots: 3 s and 6 s (grid on, nothing moving:
 // the CPU at rest), 9 s (mid-drag: grid + bands), 13 s (left edge on the line: mint), 17 s (released: all gone).
 static class GridScenario
 {
@@ -46,6 +46,10 @@ static class GridScenario
             dx = Math.Round((mon.Left + mon.Right) / 2.0) - frame.Left;
             log($"grid notepad={(h == IntPtr.Zero ? "assumed" : "found")} frame={frame.Left},{frame.Top},{frame.Right},{frame.Bottom} grab={grab.X:0},{grab.Y:0} dx={dx:0} {WindowGuides.Trace}");
         });
+        // the cat process's CPU seconds through the drag (the cloud log only has 3-4 s steps): where the cost is — setup at the first
+        // movement, the glide itself, or holding still on the line
+        foreach (var t in new[] { 6.0, 6.5, 7.0, 7.5, 8.0, 8.6, 9.0, 10.0, 11.0, 12.0, 13.0, 14.4, 14.9, 15.5, 16.5 })
+            when(t, () => log($"gcpu t={t:0.0} {Process.GetCurrentProcess().TotalProcessorTime.TotalSeconds:0.000}"));
         when(6.0, () => Move(grab));
         when(6.4, () => Mouse(Win32.MOUSEEVENTF_LEFTDOWN));
         when(6.6, () => Glide(new Point(grab.X + 0.4 * dx, grab.Y + 40), 2.0));      // off every line: grid + bands
