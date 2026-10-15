@@ -5,16 +5,17 @@ import SwiftUI
 // Find my cat's lookalikes are "your cat with one detail wrong" — but a detail can be wrong and still invisible (13 Oct 2026:
 // Patches' ink spot landed inside her dark ear patch). So, for every coat × every FindOdd, draw the real cat and the
 // lookalike the way the game does, at the smallest size a cat ever appears, and count the pixels that differ noticeably.
-// Rule: a pixel differs when any channel is off by more than 40/255; a cell passes with at least 5 such pixels.
-// Why 5: measured at that size the faintest details the game has always had are the tail tip (6 px) and the spot on most coats
-// (9–10); the one that was invisible read 2. Five sits between "as faint as the tail tip" and "not there".
+// Rule: a pixel differs when any channel is off by more than 40/255; a cell passes with at least 3 such pixels.
+// Why 3: at that size the faintest detail the game has always shipped is the tail tip, 6 px on both the Mac and Windows
+// renderers; half of it is the floor. Measured: the invisible one read 2 (Patches / spot); the weakest accepted are tux / glasses
+// (Mac 8, Windows 4) and the tail tips (6).
 // For an odd that showsFromAbove only the head (character box y < 26) is counted — all a peeking cat shows.
 
 @MainActor enum FindOddsCheck {
     /// The smallest cat in the game: level 5 and endless `mine` (0.46) × the smallest lookalike jitter (0.98) × a rooftop /
     /// pier cat's perspective (0.92) — at 1× zoom, one point per pixel (the camera never zooms out below 1×).
     static let scale: CGFloat = 0.46 * 0.98 * 0.92
-    static let channelStep = 40, minPixels = 5
+    static let channelStep = 40, minPixels = 3
     private static let W = 48, H = 64
 
     /// RGBA pixels of one cat on a flat grey ground, drawn as FindCatView draws it.
