@@ -302,14 +302,25 @@ struct FindRound {
 
     /// A lookalike's coat: yours with one detail wrong (the coat id changes, so it never counts as yours).
     static func variant(of c: CatCoat, _ odd: FindOdd) -> CatCoat {
-        let dark = ["tux", "cocoa"].contains(c.id)
-        let contrast = dark ? Color(red: 0.98, green: 0.96, blue: 0.92) : Color(red: 0.30, green: 0.24, blue: 0.23)
+        let cream = Color(red: 0.98, green: 0.96, blue: 0.92), ink = Color(red: 0.30, green: 0.24, blue: 0.23)
+        let contrast = ["tux", "cocoa"].contains(c.id) ? cream : ink
         var v = CatCoat(id: c.id + "-" + "\(odd)", name: c.name, fur: c.fur, stripe: c.stripe, shade: c.shade, cream: c.cream, line: c.line,
                         eye: c.eye, patches: c.patches, glasses: c.glasses, earL: c.earL, earR: c.earR, napPatches: c.napPatches)
         switch odd {
         case .glasses: v.glasses.toggle()
         case .ears: v.earL = contrast; v.earR = contrast
-        case .spot: v.patches.append((contrast, CGRect(x: 25.5, y: 11, width: 10, height: 8)))
+        case .spot:
+            // Contrast with whatever is already under the spot's centre — the last head patch that covers it, else the fur
+            // (Patches' dark ear patch sat right there, and an ink spot on it was invisible; `--check-odds` guards the class).
+            let spot = CGRect(x: 25.5, y: 11, width: 10, height: 8)
+            var under = c.fur
+            for (col, r) in c.patches where r.minY < 26 {
+                let dx = (spot.midX - r.midX) / (r.width / 2), dy = (spot.midY - r.midY) / (r.height / 2)
+                if dx * dx + dy * dy <= 1 { under = col }
+            }
+            let rgb = NSColor(under).usingColorSpace(.sRGB) ?? .gray
+            let luma = 0.2126 * rgb.redComponent + 0.7152 * rgb.greenComponent + 0.0722 * rgb.blueComponent
+            v.patches.append((luma < 0.5 ? cream : ink, spot))
         default: break
         }
         return v
