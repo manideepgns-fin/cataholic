@@ -36,6 +36,7 @@ jobs:
           Scenario taskbar 3, 6, 10
           Scenario zoomies 3, 4, 5, 7 14
           Scenario herd20 2, 4, 6, 10, 15
+          Scenario herd100 2, 4, 6, 10, 15
           Scenario own 3, 6, 9, 13, 18 24
           Scenario menu 3, 6 10
           Scenario sleep 3, 6, 10 14

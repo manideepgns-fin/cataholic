@@ -8,7 +8,7 @@ namespace Cataholic;
 // `--scenario <name>`: set the cat up in a known state and drive her, so a screenshot proves a behaviour (the cloud test
 // takes them; see windows/scripts/ci-run.ps1 and the workflow). Scenarios keep prefs in memory (Prefs.Ephemeral) and
 // never touch %APPDATA%. `--trace <file>` writes one line a second: where the cat is, what she is doing.
-//   rest · drop · taskbar · zoomies · herd20 · own · menu · sleep · emotes · reduced · idlenap · touch
+//   rest · drop · taskbar · zoomies · herd20 · herd100 · own · menu · sleep · emotes · reduced · idlenap · touch
 static class Scenario
 {
     public static int Failures;
@@ -34,6 +34,7 @@ static class Scenario
             case "zoomies": case "sleep": case "emotes": Stand(Notepad.Left + Notepad.Width / 2 - CatLayout.ScreenW / 2, Notepad.Top - CatGravity.Feet); break;
             case "own": Stand(Display.Frame.Width * 0.12, Display.Visible.Bottom - CatGravity.Feet); Prefs.Set("crewOnHerOwn", true); break;
             case "herd20": Prefs.Set("crewHerd", 20.0); break;
+            case "herd100": Prefs.Set("crewHerd", 100.0); break;
             case "reduced": Stand(Notepad.Left + Notepad.Width / 2 - CatLayout.ScreenW / 2, Notepad.Top - CatGravity.Feet); Prefs.Set("crewHerd", 10.0); break;
         }
         if (name == "sleep") Prefs.Set("crewQuiet", true);
