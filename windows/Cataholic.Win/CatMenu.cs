@@ -19,8 +19,8 @@ namespace Cataholic;
 //   1. Header — your cat, big, with its name, the eight coats as a strip of tiny cats beside it, and Zoomies.
 //   2. Do something — the 3×3 action grid, the hero of the panel; "On her own" switch.
 //   3. More cats — the herd size, one segmented row.
-//   4. Switches — Control-Center chips (accent = on): Show cats · Sounds · Sleep · Grid · At login.
-//   5. Footer — the version and Quit. (No "Check for updates" in this release.)
+//   4. Switches — Control-Center chips (accent = on): Show cats · Sounds · Sleep · At login.
+//   5. Footer — the version and Quit. (No Grid chip and no "Check for updates" in this release.)
 // Nothing in the panel changes its height while it is open. Every value lives where it always did (the prefs file).
 static class CatMenuPanel
 {
@@ -362,7 +362,6 @@ sealed class MenuWindow : Window
         row.Children.Add(Chip("Show cats", true, null, CatPrefs.ShowCrew, CatPrefs.SetShowCrew));
         row.Children.Add(Chip("Sounds", false, "\uE767", CatSound.IsOn, CatSound.SetEnabled));
         row.Children.Add(Chip("Sleep", false, "\uE708", CatPrefs.Quiet, CatPrefs.SetQuiet));
-        row.Children.Add(Chip("Grid", false, "\uE80A", WindowGuides.IsOn, WindowGuides.SetOn));   // window grid
         row.Children.Add(Chip("At login", false, "\uE7E8", Startup.IsOn, Startup.Set));
         return row;
     }

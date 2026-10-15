@@ -25,7 +25,6 @@ public static class Shell
         SystemEvents.UserPreferenceChanged += (_, e) => { if (e.Category == UserPreferenceCategory.Desktop) { Display.Refresh(); CatPanel.ApplyPrefs(); } };
         if (scenario != null) Scenario.Prepare(scenario);
         CatPanel.Show();
-        if (WindowGuides.IsOn) WindowGuides.Start();                     // window grid
         if (scenario != null) Scenario.Run(scenario, trace);
     }
 
@@ -33,7 +32,6 @@ public static class Shell
     {
         Prefs.Flush();
         CatSound.PurrStop();
-        WindowGuides.Stop();                                              // window grid
         if (tray != null) { tray.Visible = false; tray.Dispose(); tray = null; }
         icon?.Dispose();
     }

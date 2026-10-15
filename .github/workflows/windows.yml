@@ -46,8 +46,6 @@ jobs:
           Scenario reduced 3, 6, 10
           Scenario idlenap 3, 6
           Scenario touch 2, 5, 8, 11 14
-          Scenario grid 3, 6, 9, 13, 17, 20 22          # window grid: drag Notepad across the grid with real input
-          Scenario gridoutline 9, 13, 17 22             # …the same with "show window contents while dragging" off
           Scenario emotes 2, 5, 8, 11, 14, 17, 20, 23, 28 32
           # one log for ci-proof.sh to print
           Get-ChildItem out -Recurse -Filter log.txt | Sort-Object FullName | ForEach-Object { "== $($_.Directory.Name)"; Get-Content $_.FullName } | Set-Content out/summary.txt
