@@ -1,0 +1,28 @@
+# Cataholic for Windows — build, draw the coats, run the cat on a real Windows desktop and take screenshots.
+# The pictures are the proof (no Windows PC on hand): download them with windows/scripts/ci-proof.sh.
+name: windows
+on:
+  push:
+    paths: ['windows/**', '.github/workflows/windows.yml']
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with: { dotnet-version: '8.0.x' }
+      - name: Publish
+        run: dotnet publish windows/Cataholic.Win -c Release -o windows/publish
+      - name: Render the coats
+        run: |
+          New-Item -ItemType Directory -Force out | Out-Null
+          $p = Start-Process windows/publish/Cataholic.exe -ArgumentList '--render-coats', "$PWD\out\coats.png" -PassThru -Wait
+          if ($p.ExitCode -ne 0 -or -not (Test-Path out/coats.png)) { throw "render failed ($($p.ExitCode))" }
+      - name: Run on the desktop and take screenshots
+        run: windows/scripts/ci-run.ps1 -Exe windows/publish/Cataholic.exe -Out out
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: proof, path: out/ }
+      - uses: actions/upload-artifact@v4
+        with: { name: Cataholic-win-x64, path: windows/publish/Cataholic.exe }

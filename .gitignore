@@ -5,3 +5,8 @@ dist/
 # launch videos stay out of the repo; docs/ keeps only the GIF and stills
 *.mov
 *.mp4
+# Windows build output
+windows/**/bin/
+windows/**/obj/
+windows/publish/
+windows/ci-out/
