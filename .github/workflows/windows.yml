@@ -21,6 +21,13 @@ jobs:
           $p = Start-Process windows/publish/Cataholic.exe -ArgumentList '--check-find', '60' -PassThru -Wait -RedirectStandardOutput "$PWD\out\check-find.txt"
           Get-Content out/check-find.txt
           if ($p.ExitCode -ne 0) { throw "Find my cat fairness check FAILED (exit $($p.ExitCode))" }
+      # Find my cat: every lookalike's one wrong detail must show at the smallest size a cat appears (coat × odd table; a cell under 5 px fails)
+      - name: Find my cat lookalike visibility check
+        run: |
+          New-Item -ItemType Directory -Force out | Out-Null
+          $p = Start-Process windows/publish/Cataholic.exe -ArgumentList '--check-odds' -PassThru -Wait -RedirectStandardOutput "$PWD\out\check-odds.txt"
+          Get-Content out/check-odds.txt
+          if ($p.ExitCode -ne 0) { throw "Find my cat lookalike check FAILED (exit $($p.ExitCode))" }
       - name: Render the coats
         run: |
           New-Item -ItemType Directory -Force out | Out-Null
