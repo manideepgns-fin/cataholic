@@ -22,7 +22,8 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-        with: { ref: '${{ inputs.tag || github.ref }}' }
+        # a dry run builds the dispatched branch (the tag usually doesn't exist yet); the tag is still checked against the csproj below
+        with: { ref: '${{ (inputs.dry_run && github.ref) || inputs.tag || github.ref }}' }
       - uses: actions/setup-dotnet@v4
         with: { dotnet-version: '8.0.x' }
       - name: Package (tag check, publish, smoke test, zip, sha256)

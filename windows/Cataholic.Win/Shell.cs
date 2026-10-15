@@ -9,7 +9,7 @@ namespace Cataholic;
 
 // Shell — the app around the cat (Cataholic.swift): a paw in the tray (the menu-bar paw), launch at login, and startup.
 // The tray paw opens the same menu as a right-click on the cat. The app shows no taskbar button (the windows are tool
-// windows). Updates are Updates.cs (our own, no Sparkle); links are Links.cs.
+// windows). Out for this release: Sparkle-style updates, cataholic:// links, the sign/MailStore plumbing, Find my cat.
 public static class Shell
 {
     static NotifyIcon? tray;
