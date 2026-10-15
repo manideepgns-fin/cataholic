@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Linq;
 using System.Windows;
 
@@ -19,6 +20,16 @@ static class GridScenario
         // own setting) — the window then only jumps on release, and the grid follows the pointer instead
         GuideNative.SetFullWindowDrag(fullDrag);
         double dx = 0;
+        // a second window, up and to the left, so that mid-drag its right and bottom edges come within `Near` of Notepad's left and top: the blue dashes
+        Process? other = null;
+        when(1.0, () => { try { other = Process.Start("notepad.exe"); } catch { } });
+        when(3.5, () =>
+        {
+            other?.Refresh();
+            if (other != null && other.MainWindowHandle != IntPtr.Zero)
+                Win32.SetWindowPos(other.MainWindowHandle, IntPtr.Zero, Display.Px(20), Display.Px(100), Display.Px(310), Display.Px(200), Win32.SWP_NOZORDER | Win32.SWP_NOACTIVATE);
+        });
+        when(19.0, () => { try { other?.Kill(); } catch { } });
         Point grab = default;
         when(5.5, () =>
         {

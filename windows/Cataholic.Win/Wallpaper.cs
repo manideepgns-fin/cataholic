@@ -17,6 +17,8 @@ sealed class LumaMap
     public const int W = 64, H = 40;
     readonly byte[] v;
     public LumaMap(byte[] v) { this.v = v; }
+    /// min / max / mean brightness 0…1 — for the trace: a map with min = max would mean the picture never got read.
+    public string Stats() => $"luma min={v.Min() / 255.0:0.00} max={v.Max() / 255.0:0.00} mean={v.Average(b => (double)b) / 255:0.00}";
     /// Brightness 0…1 at a point given as fractions of the screen (0,0 = top-left).
     public double At(double fx, double fy)
     {
@@ -35,6 +37,7 @@ static class Wallpaper
     static readonly Dictionary<string, LumaMap> cache = new();
     /// For the trace / report: what was resolved the last time.
     public static string Info = "";
+    static string error = "";
 
     public static LumaMap? Map(Win32.RECT mon)
     {
@@ -45,9 +48,12 @@ static class Wallpaper
         DateTime stamp = path == null ? default : File.GetLastWriteTimeUtc(path);
         string key = $"{mon.Left},{mon.Top},{mon.Right},{mon.Bottom}|{path}|{stamp.Ticks}|{style}|{tile}|{bg}";
         if (cache.TryGetValue(key, out var m)) return m;
-        m = path == null ? Solid(bg) : Image(path, mon, style, tile == "1" && style == "0", bg) ?? Solid(bg);
-        Info = $"wallpaper={(path ?? "none")} style={style} tile={tile} bg={bg} → {(m == null ? "dark fallback" : "map")}";
-        if (m != null) { if (cache.Count > 8) cache.Clear(); cache[key] = m; }
+        error = "";
+        var img = path == null ? null : Image(path, mon, style, tile == "1" && style == "0", bg);
+        m = img ?? Solid(bg);
+        Info = $"wallpaper={(path ?? "none")} style={style} tile={tile} bg={bg} → {(img != null ? "image" : path == null ? "solid colour (no file)" : "solid colour (picture unreadable: " + error + ")")} {m.Stats()}";
+        if (cache.Count > 8) cache.Clear();
+        cache[key] = m;
         return m;
     }
 
@@ -140,7 +146,7 @@ static class Wallpaper
             for (int i = 0; i < map.Length; i++) map[i] = Luma(px[i * 4 + 2], px[i * 4 + 1], px[i * 4]);
             return new LumaMap(map);
         }
-        catch { return null; }                                                      // an unreadable picture: a solid map of the background colour
+        catch (Exception e) { error = e.GetType().Name; return null; }             // an unreadable picture: a solid map of the background colour
     }
 
     static void Draw(DrawingContext dc, BitmapSource img, double x, double y, double w, double h, double kx, double ky) =>
