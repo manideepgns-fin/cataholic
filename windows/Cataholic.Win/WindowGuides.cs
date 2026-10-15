@@ -68,12 +68,20 @@ static class WindowGuides
 
     static void Event(IntPtr hook, uint ev, IntPtr hwnd, int idObject, int idChild, uint thread, uint time)
     {
-        switch (ev)
+        try
         {
-            case GuideNative.EVENT_SYSTEM_MOVESIZESTART: Begin(hwnd); break;
-            case GuideNative.EVENT_SYSTEM_MOVESIZEEND: End(); break;
-            // the cursor and the caret raise LOCATIONCHANGE too (idObject -9 / -8): only the window itself counts
-            case GuideNative.EVENT_OBJECT_LOCATIONCHANGE when hwnd == target && idObject == 0 && idChild == 0: Events++; dirty = true; break;
+            switch (ev)
+            {
+                case GuideNative.EVENT_SYSTEM_MOVESIZESTART: Begin(hwnd); break;
+                case GuideNative.EVENT_SYSTEM_MOVESIZEEND: End(); break;
+                // the cursor and the caret raise LOCATIONCHANGE too (idObject -9 / -8): only the window itself counts
+                case GuideNative.EVENT_OBJECT_LOCATIONCHANGE when hwnd == target && idObject == 0 && idChild == 0: Events++; dirty = true; break;
+            }
+        }
+        catch (Exception e)                                             // an exception out of a native callback would end the process: a bug in the grid must not
+        {
+            Scenario.Failures++;
+            Console.Error.WriteLine(e);
         }
     }
 
