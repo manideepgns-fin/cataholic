@@ -35,6 +35,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let code = MainActor.assumeIsolated { FindCheck.run(n) }
             exit(code)
         }
+        // `--check-odds`: every lookalike's wrong detail is visible at the smallest size (FindOddsCheck); exits 0 only if all are.
+        if args.contains("--check-odds") {
+            exit(MainActor.assumeIsolated { FindOddsCheck.run() })
+        }
         NSApp.setActivationPolicy(.accessory)
         _ = Updates.controller                       // Sparkle starts checking (daily, in the background)
         CrewPanel.show()

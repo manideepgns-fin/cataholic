@@ -435,9 +435,9 @@ struct FindRandom: RandomNumberGenerator {
 private let findCollar: CGFloat = 1.6
 
 /// A cat as the game draws it — a lookalike's wrong collar, missing bell or tail tip included.
-private func findCharacter(_ cat: FindCat, state: CrewSkinState? = nil, pawRaise: CGFloat = 1, pawWave: Double = 0,
+func findCharacter(_ cat: FindCat, state: CrewSkinState? = nil, pawRaise: CGFloat = 1, pawWave: Double = 0,
                            pawWrist: Double = 0, eyes: CrewEyes? = nil) -> CrewCharacter {
-    let dark = ["tux", "cocoa"].contains(CatCoat.current.id)
+    let dark = ["tux", "cocoa"].contains(String(cat.coat.id.prefix { $0 != "-" }))      // a lookalike's id is "<coat>-<odd>"
     return CrewCharacter(state: state ?? cat.state, badge: "", colors: CrewSkinColors(),
                          runPhase: cat.state == .running ? 0.9 + Double(cat.id % 3) : 0, pin: false, coatOverride: cat.coat,
                          pawRaise: pawRaise, pawWave: pawWave, eyes: eyes, pawWrist: pawWrist,
