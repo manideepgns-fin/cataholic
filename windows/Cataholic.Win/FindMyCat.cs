@@ -236,10 +236,24 @@ sealed class FindGame
     /// A lookalike's coat: yours with one detail wrong (the coat id changes, so it never counts as yours).
     public static CatCoat Variant(CatCoat c, FindOdd odd)
     {
-        bool dark = c.Id == "tux" || c.Id == "cocoa";
-        var contrast = dark ? Gfx.C(0.98, 0.96, 0.92) : Gfx.C(0.30, 0.24, 0.23);
+        var cream = Gfx.C(0.98, 0.96, 0.92); var ink = Gfx.C(0.30, 0.24, 0.23);
+        var contrast = c.Id == "tux" || c.Id == "cocoa" ? cream : ink;
         var patches = new List<(Color Color, Rect Rect)>(c.Patches);
-        if (odd == FindOdd.Spot) patches.Add((contrast, new Rect(25.5, 11, 10, 8)));
+        if (odd == FindOdd.Spot)
+        {
+            // Contrast with whatever is already under the spot's centre — the last head patch that covers it, else the fur
+            // (Patches' dark ear patch sat right there, and an ink spot on it was invisible; `--check-odds` guards the class).
+            var spot = new Rect(25.5, 11, 10, 8);
+            var under = c.Fur;
+            foreach (var (col, r) in c.Patches)
+            {
+                if (r.Top >= 26) continue;
+                double dx = (spot.Left + spot.Width / 2 - (r.Left + r.Width / 2)) / (r.Width / 2), dy = (spot.Top + spot.Height / 2 - (r.Top + r.Height / 2)) / (r.Height / 2);
+                if (dx * dx + dy * dy <= 1) under = col;
+            }
+            double luma = (0.2126 * under.R + 0.7152 * under.G + 0.0722 * under.B) / 255;
+            patches.Add((luma < 0.5 ? cream : ink, spot));
+        }
         return new CatCoat(c.Id + "-" + odd.Name(), c.Name, c.Fur, c.Stripe, c.Shade, c.Cream, c.Line, c.Eye)
         {
             Patches = patches,
