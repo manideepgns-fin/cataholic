@@ -8,14 +8,15 @@ namespace Cataholic;
 // `--scenario <name>`: set the cat up in a known state and drive her, so a screenshot proves a behaviour (the cloud test
 // takes them; see windows/scripts/ci-run.ps1 and the workflow). Scenarios keep prefs in memory (Prefs.Ephemeral) and
 // never touch %APPDATA%. `--trace <file>` writes one line a second: where the cat is, what she is doing.
-//   rest · drop · taskbar · zoomies · herd20 · herd100 · own · menu · sleep · emotes · reduced · idlenap · touch
+//   rest · drop · taskbar · zoomies · herd20 · herd100 · own · menu · sleep · emotes · reduced · idlenap · touch · find
 static class Scenario
 {
     public static int Failures;
     static StreamWriter? trace;
     // the cloud test's clock starts when it launches us, but WPF takes a moment to come up: schedule against process start
     static readonly DateTime T0 = Process.GetCurrentProcess().StartTime;
-    static void At(double sec, System.Action a) => Later.After(Math.Max(0.01, sec - (DateTime.Now - T0).TotalSeconds), a);
+    internal static void At(double sec, System.Action a) =>   // internal: FindScenario (Find my cat)
+         Later.After(Math.Max(0.01, sec - (DateTime.Now - T0).TotalSeconds), a);
 
     // Notepad is moved to (25%, 40%, 50% × 35%) of the screen by ci-run.ps1: the window the cat lands on.
     static Rect Notepad => new(Display.Frame.Width * 0.25, Display.Frame.Height * 0.40, Display.Frame.Width * 0.5, Display.Frame.Height * 0.35);
@@ -36,6 +37,7 @@ static class Scenario
             case "reduced": Stand(Notepad.Left + Notepad.Width / 2 - CatLayout.ScreenW / 2, Notepad.Top - CatGravity.Feet); Prefs.Set("crewHerd", 10.0); break;
         }
         if (name == "sleep") Prefs.Set("crewQuiet", true);
+        if (name == "find") FindScenario.Prepare();                // Find my cat
     }
     static void Stand(double left, double top)
     {
@@ -72,6 +74,7 @@ static class Scenario
                 At(1.5, () => CatPanel.CurrentModel?.StartAction(CatModel.Action.Hi, user: true));
                 At(4, CatPanel.Zoomies);
                 break;
+            case "find": FindScenario.Run(tracePath); break;       // Find my cat
             case "menu":
                 At(1.5, () => CatMenuPanel.Show(new Point(Display.Frame.Width * 0.55, 30)));
                 break;
@@ -93,15 +96,15 @@ static class Scenario
 
     // ── synthetic mouse (the cat is real: these go through the OS like a hand would) ──
     static Point CatCenter() => CatPanel.CatCenter() ?? new Point(0, 0);
-    static void MoveTo(Point dip) => Win32.SetCursorPos(Display.Px(dip.X), Display.Px(dip.Y));
-    static void Mouse(uint flag) => Win32.mouse_event(flag, 0, 0, 0, UIntPtr.Zero);
-    static void Click(bool right)
+    internal static void MoveTo(Point dip) => Win32.SetCursorPos(Display.Px(dip.X), Display.Px(dip.Y));
+    internal static void Mouse(uint flag) => Win32.mouse_event(flag, 0, 0, 0, UIntPtr.Zero);
+    internal static void Click(bool right)
     {
         Mouse(right ? Win32.MOUSEEVENTF_RIGHTDOWN : Win32.MOUSEEVENTF_LEFTDOWN);
         Later.After(0.08, () => Mouse(right ? Win32.MOUSEEVENTF_RIGHTUP : Win32.MOUSEEVENTF_LEFTUP));
     }
     /// Slide the pointer to `to` over `secs` (30 steps a second), button held by the caller.
-    static void Drag(Point to, double secs)
+    internal static void Drag(Point to, double secs)
     {
         var from = Display.Pointer(); var t0 = DateTime.Now;
         Later.Every(1.0 / 30, t =>
@@ -112,7 +115,7 @@ static class Scenario
         });
     }
 
-    static void Trace(string msg)
+    internal static void Trace(string msg)
     {
         if (trace == null) return;
         var m = CatPanel.CurrentModel;
