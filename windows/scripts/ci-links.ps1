@@ -29,12 +29,12 @@ $cat = Start-Process $Exe -ArgumentList '--quit-after', $Seconds, '--scenario', 
   -RedirectStandardOutput "$Out/cat-stdout.txt" -RedirectStandardError "$Out/cat-stderr.txt"
 $t0 = Get-Date
 function At($s) { while (((Get-Date) - $t0).TotalSeconds -lt $s) { Start-Sleep -Milliseconds 50 } }
-function Shot($s) {
+function Shot($s, $name = 'shot') {
   At $s
   $bmp = New-Object System.Drawing.Bitmap $b.Width, $b.Height
   $g = [System.Drawing.Graphics]::FromImage($bmp)
   $g.CopyFromScreen($b.Location, [System.Drawing.Point]::Empty, $b.Size)
-  $bmp.Save("$Out/shot-$($s)s.png"); $g.Dispose(); $bmp.Dispose()
+  $bmp.Save("$Out/$name-$($s)s.png"); $g.Dispose(); $bmp.Dispose()
   $cpu = try { (Get-Process -Id $cat.Id).TotalProcessorTime.TotalSeconds } catch { -1 }
   $mem = try { [int]((Get-Process -Id $cat.Id).WorkingSet64 / 1MB) } catch { -1 }
   Log "t=$($s)s alive=$(-not $cat.HasExited) cpu=$($cpu)s mem=$($mem)MB"
@@ -77,5 +77,15 @@ Shot 22
 Log "processes at the end: $(Cats)"
 $cat.WaitForExit(($Seconds + 10) * 1000) | Out-Null
 Log "cat exit=$($cat.ExitCode)"
+if ($cat.ExitCode -ne 0) { Stop-Process -Id $np.Id -ErrorAction SilentlyContinue; throw "the cat exited with $($cat.ExitCode)" }
+
+# The first launch handles its own --url too: a cat started BY a link (no cat runs now, so this is the first instance)
+$t0 = Get-Date
+$cat = Start-Process $Exe -ArgumentList '--url', 'cataholic://sign?count=5&note=Boot', '--scenario', 'sign', '--trace', "$Out\trace-boot.txt", '--quit-after', 8 -PassThru `
+  -RedirectStandardOutput "$Out/boot-stdout.txt" -RedirectStandardError "$Out/boot-stderr.txt"
+Shot 3.5 'boot'                                   # sign 5, bubble "New notification from Boot"
+Shot 6.5 'boot'                                   # sign 5, no bubble
+$cat.WaitForExit(15000) | Out-Null
+Log "launched with --url: exit=$($cat.ExitCode)"
 Stop-Process -Id $np.Id -ErrorAction SilentlyContinue
-if ($cat.ExitCode -ne 0) { throw "the cat exited with $($cat.ExitCode)" }
+if ($cat.ExitCode -ne 0) { throw "the link-launched cat exited with $($cat.ExitCode)" }
