@@ -51,6 +51,21 @@ jobs:
           Get-ChildItem out -Recurse -Filter log.txt | Sort-Object FullName | ForEach-Object { "== $($_.Directory.Name)"; Get-Content $_.FullName } | Set-Content out/summary.txt
           Copy-Item out/summary.txt out/log.txt -Force
           if ($failed) { throw "failed scenarios: $failed" }
+      # updates (lane win-update): the release packaging as a dry run (the same script windows-release.yml runs; nothing is published),
+      # then the auto-update proof against a feed served from this job. Runs even if a scenario above failed.
+      - name: Release dry run (windows-release.yml's steps, no gh release create)
+        if: always()
+        run: |
+          $v = ([xml](Get-Content windows/Cataholic.Win/Cataholic.Win.csproj)).Project.PropertyGroup.Version | Where-Object { $_ } | Select-Object -First 1
+          windows/scripts/package-release.ps1 -Out out/release-dry-run -Tag "win-v$v" 2>&1 | Tee-Object out/release-dry-run.txt
+          Get-ChildItem out/release-dry-run | Where-Object { -not $_.PSIsContainer } | Select-Object Name, Length | Format-Table | Out-String | Add-Content out/release-dry-run.txt
+          Remove-Item out/release-dry-run/publish -Recurse -Force
+      - name: Update proof (a newer 0.1.1 build and a local feed)
+        if: always()
+        run: |
+          windows/scripts/package-release.ps1 -Out out/update-build -Version 0.1.1
+          Remove-Item out/update-build/publish -Recurse -Force
+          windows/scripts/ci-update.ps1 -Exe windows/publish/Cataholic.exe -NewDir out/update-build -Out out/update
       - uses: actions/upload-artifact@v4
         if: always()
         with: { name: proof, path: out/ }

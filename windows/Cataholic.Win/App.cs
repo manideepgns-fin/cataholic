@@ -12,6 +12,8 @@ namespace Cataholic;
 //   --scenario <name>           set the cat up in a known state for a screenshot (Scenario.cs); prefs stay in memory
 //   --url <cataholic://…>       a link (the registered handler passes it; see Links.cs)
 //   --trace <file>              with a scenario: one line a second — where the cat is and what she is doing
+//   --after-update <pid>        the relaunch after an auto-update: wait for that old cat to exit first (Updates.cs)
+//   --update-feed <url>         with --scenario update: a releases list of our own, instead of GitHub's (Updates.cs)
 public static class Program
 {
     [STAThread]
@@ -25,7 +27,9 @@ public static class Program
         // cataholic:// links: one cat per user. A second launch (a link, or a double-click on the exe) hands its --url to the
         // first and exits at once. Rendering is no cat, and only the sign scenario takes part (the CI proof drives real links).
         bool renders = Arg("--render-coats") != null || Arg("--render-poses") != null;
-        if (!renders && (Arg("--scenario") is null or "sign") && !CatLinks.Own(Arg("--url"))) return 0;
+        if (int.TryParse(Arg("--after-update"), out int oldCat)) Updates.WaitForExit(oldCat);     // updates: the old cat holds the mutex until it exits
+        if (Arg("--scenario") != null) Updates.FeedOverride = Arg("--update-feed");               // updates: test-only
+        if (!renders && (Arg("--scenario") is null or "sign" or "update") && !CatLinks.Own(Arg("--url"))) return 0;   // updates: "update" takes part
         var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
         if (Arg("--render-coats") is string png) { Render.Coats(png); return 0; }
         if (Arg("--render-poses") is string poses) { Render.Poses(poses); return 0; }

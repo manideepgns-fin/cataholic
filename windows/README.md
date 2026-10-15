@@ -4,7 +4,7 @@ The same cat as the Mac app, drawn in code with C# / .NET 8 / WPF. There are no 
 It covers the core cat: the 8 coats, gravity on windows and the taskbar, pet and purr, emotes, zoomies, More cats,
 On her own, Sleep, the menu and a tray paw.
 `cataholic://sign?count=3&note=…` and `cataholic://zoomies` links work (see "Links" below).
-Not yet ported: Find my cat, auto-update.
+It updates itself (see "Updates and releases" below). Not yet ported: Find my cat.
 
 **The window grid is Mac-only, on purpose** (owner, 15 Oct 2026). Windows already snaps windows (Snap Layouts, Snap
 Assist, PowerToys FancyZones). A port needs WinEvent hooks on every window and a full-screen overlay while you drag,
@@ -29,6 +29,7 @@ The app compiles on a Mac, but it only runs on Windows.
 1. It renders `coats.png` and `poses.png` (`--render-coats`, `--render-poses`). Compare them with the Mac's
    `docs/cats.png`.
 2. It runs every test scenario next to a Notepad window (`--scenario rest|drop|taskbar|zoomies|herd20|herd100|own|menu|sleep|emotes|reduced|idlenap|touch|sign`).
+   After them come the release dry run and the update proof (see "Updates and releases").
 3. It takes screenshots and logs the CPU and memory of the cat process.
 
 ```bash
@@ -66,6 +67,26 @@ windows/scripts/ci-proof.sh   # pushes the branch, waits for the run, downloads 
   and exits at once. Waiting on the pipe costs no CPU.
 - Proof: `windows/scripts/ci-links.ps1` (its own script, because it acts between screenshots) opens real links with
   `Start-Process "cataholic://…"`, starts the exe a second time and presses Esc.
+
+## Updates and releases
+
+- **The release:** push a tag `win-v<version>` (the csproj `<Version>` must match) and `.github/workflows/windows-release.yml`
+  publishes `Cataholic-win-x64.zip` (only `Cataholic.exe`) + `.sha256` with `windows/RELEASE_NOTES.md`. A Windows release is
+  **never** marked Latest (`--latest=false`): the Mac's Sparkle feed is `releases/latest/download/appcast.xml`, and a Windows
+  release there would cut off every Mac copy. Mac tags are `v*`; never reuse them. `workflow_dispatch` takes the tag and a
+  `dry_run` switch. `windows/scripts/package-release.ps1` does the packaging for both the release and CI's dry run.
+- **The updater** (`Updates.cs`, no NuGet): 60 s after start, then daily, or **Check for updates** in the menu, it reads
+  `api.github.com/repos/manideepgns-fin/cataholic/releases`, takes the newest non-draft, non-prerelease `win-v*` release, and
+  updates only if it is higher than the running version. It downloads the zip and `.sha256` into `%LOCALAPPDATA%\Cataholic\update`,
+  checks the hash, unzips, checks the new exe's `FileVersionInfo`, then renames the running `Cataholic.exe` to `.old`, moves the
+  new one into place and starts it with `--after-update <old pid>`; the old cat quits. The new one waits for that pid before it
+  takes the mutex (`Links.cs`) and deletes `Cataholic.exe.old`. Any failure leaves the folder as it was. It does nothing if the
+  folder is not writable or the exe is not called `Cataholic.exe` (`dotnet run`). The last check time is the pref `lastUpdateCheck`.
+- **Proof:** `windows/scripts/ci-update.ps1` (run by `windows.yml`) serves a feed shaped like the GitHub API from the CI job, with
+  a newer 0.1.1 build, and runs 0.1.0 against it with `--scenario update --update-feed <url>`: once with a wrong `.sha256` (no swap)
+  and once with the right one (swap, one process, 0.1.1, `.old` gone). The feed also holds a Mac `v9.9.9`, a draft and a prerelease,
+  all of which must be ignored. The release workflow can't be dispatched from a branch until it is on the default branch, so
+  `windows.yml` runs the same packaging script as a dry run.
 
 ## Gotchas (learned the hard way)
 
