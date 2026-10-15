@@ -13,7 +13,8 @@ namespace Cataholic;
 //   20 s    zoomed 2.5× on her, then a real click-drag pans                    → find/zoom.png, pan.png
 //   25–31 s nothing scheduled: the CPU log between the 26 s and 30 s shots is "nothing animates while you look"
 //   31 s    three misses: the spotlight                                         → find/lost.png
-//   34 s    Esc/close frees it (trace: open=False)
+//   24 s    a real mouse wheel zooms at the pointer
+//   34 s    the level picker opens (shot 35 s); 36 s Esc closes the window (trace: open=False)
 // `find/*.png` are the game window drawn off-screen at its own size (1100×704), so they do not depend on the 1024×768
 // runner screen; the ci-run screenshots show the real window on the desktop.
 static class FindScenario
@@ -74,13 +75,16 @@ static class FindScenario
         At(22.0, () =>
         {
             if (W is not FindWindow w) return;
-            var px = w.ScreenPixelOfScene(new Point(550, 320));
+            var px = w.ScreenPixelOfScene(w.Camera.ToScene(new Point(550, 320)));      // the middle of the viewport
             Win32.SetCursorPos((int)Math.Round(px.X), (int)Math.Round(px.Y));
             Later.After(0.05, () => Scenario.Mouse(Win32.MOUSEEVENTF_LEFTDOWN));
             Later.After(0.3, () => Scenario.Drag(new Point(px.X / Display.Scale - 220, px.Y / Display.Scale - 110), 0.7));
             Later.After(1.2, () => Scenario.Mouse(Win32.MOUSEEVENTF_LEFTUP));
         });
         At(24.0, () => { Snap("pan"); Say("panned"); });
+        // a real mouse wheel: three notches up zoom in at the pointer
+        At(24.4, () => { Scenario.Wheel(120); Later.After(0.1, () => Scenario.Wheel(120)); Later.After(0.2, () => Scenario.Wheel(120)); });
+        At(24.9, () => { Snap("wheel"); Say("after three wheel notches"); });
         At(25.0, () => Play(1));
         At(26.0, () => Say("idle begins"));
         At(30.0, () => Say("idle ends"));
@@ -92,7 +96,9 @@ static class FindScenario
             At(31.3 + 0.1 * i, () => W?.Game.Guess(spots[k]));
         }
         At(32.5, () => { Snap("lost"); Say("three misses"); });
-        At(34.0, () => W?.Close());
-        At(34.5, () => Say("after Esc/close"));
+        At(34.0, () => W?.ShowLevelPicker());                     // the level picker (shot at 35 s)
+        At(35.8, () => W?.CloseLevelPicker());
+        At(36.0, () => W?.PressEsc());                            // Esc closes
+        At(36.5, () => Say("after Esc"));
     }
 }

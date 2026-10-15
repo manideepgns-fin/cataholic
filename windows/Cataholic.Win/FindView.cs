@@ -113,6 +113,8 @@ sealed class FindWindow : Window
     readonly Border zoomOut, zoomIn;
     readonly StackPanel paws = new() { Orientation = Orientation.Horizontal };
     readonly FrameworkElement portrait;
+    readonly FrameworkElement levelButton;
+    ContextMenu? levelMenu;
     readonly Button bannerButton;
     DispatcherTimer? clock;
     // what the scene layer was last painted for: it repaints only for a new layout or the round ending
@@ -186,6 +188,7 @@ sealed class FindWindow : Window
         };
         levelBtn.MouseEnter += (_, _) => levelBtn.Background = Gfx.B(Color.FromArgb(15, 0, 0, 0));
         levelBtn.MouseLeave += (_, _) => levelBtn.Background = Brushes.Transparent;
+        levelButton = levelBtn;
         levelBtn.MouseLeftButtonUp += (_, e) => { e.Handled = true; ShowLevels(levelBtn); };
         paws.ToolTip = "Guesses left"; paws.VerticalAlignment = VerticalAlignment.Center;
         var head = new DockPanel { Height = HeaderH, Margin = new Thickness(18, 0, 18, 0), LastChildFill = true };
@@ -382,6 +385,8 @@ sealed class FindWindow : Window
     }
 
     // ── the level picker: 1 · 2 · 3 · 4 · 5 · Endless, each with its place; levels not reached yet are locked ──
+    public void ShowLevelPicker() => ShowLevels(levelButton);          // (the tests open it)
+    public void CloseLevelPicker() { if (levelMenu != null) levelMenu.IsOpen = false; }
     void ShowLevels(FrameworkElement at)
     {
         int cur = Game.Round.Level, max = FindGame.MaxLevel;
@@ -395,6 +400,7 @@ sealed class FindWindow : Window
             item.Click += (_, _) => { Camera.Reset(); Game.Play(level); };
             menu.Items.Add(item);
         }
+        levelMenu = menu;
         menu.IsOpen = true;
     }
 
@@ -429,6 +435,13 @@ sealed class FindWindow : Window
     }
 
     // ── for the tests ──
+    /// An Esc key press through the window's own key handler.
+    public void PressEsc()
+    {
+        var src = PresentationSource.FromVisual(this);
+        if (src == null) return;
+        RaiseEvent(new KeyEventArgs(Keyboard.PrimaryDevice, src, 0, Key.Escape) { RoutedEvent = Keyboard.PreviewKeyDownEvent });
+    }
     /// The screen pixel of a scene point (what a real click would hit).
     public Point ScreenPixelOfScene(Point scene) => viewport.PointToScreen(Camera.ToViewport(scene));
     /// The window's contents (header + scene, 1100×704, unscaled) as a PNG — independent of the screen size.
@@ -680,6 +693,7 @@ static class FindCli
     {
         int n = flagAt + 1 < args.Length && int.TryParse(args[flagAt + 1], out var v) ? v : 200;
         if (!Console.IsOutputRedirected) AttachConsole(-1);
+        Console.OutputEncoding = new System.Text.UTF8Encoding(false);       // the table has × · — in it
         return FindCheck.Run(n, Console.WriteLine);
     }
 }

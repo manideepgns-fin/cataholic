@@ -51,7 +51,7 @@ jobs:
           Scenario idlenap 3, 6
           Scenario touch 2, 5, 8, 11 14
           Scenario emotes 2, 5, 8, 11, 14, 17, 20, 23, 28 32
-          Scenario find 4, 6, 8, 10, 12, 15, 17, 19, 21, 24, 26, 30, 33 38     # Find my cat (find/*.png are the window drawn off-screen)
+          Scenario find 4, 6, 8, 10, 12, 15, 17, 19, 21, 24, 26, 30, 33, 35 40     # Find my cat (find/*.png are the window drawn off-screen)
           # one log for ci-proof.sh to print
           Get-ChildItem out -Recurse -Filter log.txt | Sort-Object FullName | ForEach-Object { "== $($_.Directory.Name)"; Get-Content $_.FullName } | Set-Content out/summary.txt
           Copy-Item out/summary.txt out/log.txt -Force

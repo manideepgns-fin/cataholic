@@ -98,6 +98,7 @@ static class Scenario
     static Point CatCenter() => CatPanel.CatCenter() ?? new Point(0, 0);
     internal static void MoveTo(Point dip) => Win32.SetCursorPos(Display.Px(dip.X), Display.Px(dip.Y));
     internal static void Mouse(uint flag) => Win32.mouse_event(flag, 0, 0, 0, UIntPtr.Zero);
+    internal static void Wheel(int delta) => Win32.mouse_event(0x0800 /* MOUSEEVENTF_WHEEL */, 0, 0, (uint)delta, UIntPtr.Zero);
     internal static void Click(bool right)
     {
         Mouse(right ? Win32.MOUSEEVENTF_RIGHTDOWN : Win32.MOUSEEVENTF_LEFTDOWN);
