@@ -10,7 +10,8 @@ public static class W { [DllImport("user32.dll")] public static extern bool Move
 New-Item -ItemType Directory -Force $Out | Out-Null
 $b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
 "screen $($b.Width)x$($b.Height)" | Tee-Object -Append "$Out/log.txt"
-# A window for the cat to land on: Notepad, in the middle of the screen
+# Clear the desktop (the runner leaves a console open), then a window for the cat to land on: Notepad, in the middle of the screen
+(New-Object -ComObject Shell.Application).MinimizeAll(); Start-Sleep 1
 $np = Start-Process notepad -PassThru
 Start-Sleep 2
 $h = (Get-Process -Id $np.Id).MainWindowHandle
