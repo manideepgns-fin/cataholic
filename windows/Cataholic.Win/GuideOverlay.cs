@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows;
@@ -30,6 +31,10 @@ static class GuideNative
     }
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     public static extern IntPtr CreateWindowEx(int ex, string cls, string? name, uint style, int x, int y, int w, int h, IntPtr parent, IntPtr menu, IntPtr inst, IntPtr param);
+    /// Same call with no bitmap and no position: only the blend changes (a fade costs no upload).
+    [DllImport("user32.dll", EntryPoint = "UpdateLayeredWindow")]
+    public static extern bool UpdateLayeredWindowBlend(IntPtr h, IntPtr dst, IntPtr pos, IntPtr size, IntPtr src, IntPtr from, uint key, ref BLENDFUNCTION blend, uint flags);
+    [DllImport("user32.dll")] public static extern bool SetLayeredWindowAttributes(IntPtr h, uint key, byte alpha, uint flags);
     [DllImport("user32.dll")] public static extern bool DestroyWindow(IntPtr h);
     [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int cmd);
     [DllImport("user32.dll")] public static extern IntPtr GetDC(IntPtr h);
@@ -41,6 +46,41 @@ static class GuideNative
     [DllImport("gdi32.dll")] public static extern IntPtr SelectObject(IntPtr dc, IntPtr obj);
     [DllImport("gdi32.dll")] public static extern bool DeleteObject(IntPtr obj);
     [DllImport("gdi32.dll")] public static extern bool DeleteDC(IntPtr dc);
+    [DllImport("gdi32.dll")] static extern IntPtr CreateSolidBrush(uint colorRef);
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    struct WNDCLASSEX
+    {
+        public uint cbSize, style; public IntPtr lpfnWndProc; public int cbClsExtra, cbWndExtra;
+        public IntPtr hInstance, hIcon, hCursor, hbrBackground; public string? lpszMenuName, lpszClassName; public IntPtr hIconSm;
+    }
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)] static extern ushort RegisterClassEx(ref WNDCLASSEX c);
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] static extern IntPtr GetModuleHandle(string? name);
+    [DllImport("kernel32.dll", CharSet = CharSet.Ansi)] static extern IntPtr GetProcAddress(IntPtr module, string name);
+
+    /// A window class that is nothing but a colour (WM_ERASEBKGND paints the brush; the window procedure is the system's own),
+    /// for the shadow bands: with one constant alpha they need no bitmap at all.
+    public static string? BandClass()
+    {
+        const string name = "CataholicGuideBand";
+        if (bandClass) return name;
+        var c = new WNDCLASSEX
+        {
+            cbSize = (uint)Marshal.SizeOf<WNDCLASSEX>(), style = 3 /* CS_HREDRAW | CS_VREDRAW */,
+            lpfnWndProc = GetProcAddress(GetModuleHandle("user32.dll"), "DefWindowProcW"),
+            hInstance = GetModuleHandle(null), hbrBackground = CreateSolidBrush(0x808080), lpszClassName = name,
+        };
+        bandClass = RegisterClassEx(ref c) != 0;
+        return bandClass ? name : null;
+    }
+    static bool bandClass;
+
+    /// A click-through, topmost, never-activated layered popup of class `cls` (TOOLWINDOW: the cat's gravity must not take it for a window).
+    public static IntPtr NewWindow(string cls)
+    {
+        int ex = Win32.WS_EX_LAYERED | Win32.WS_EX_TRANSPARENT | Win32.WS_EX_NOACTIVATE | Win32.WS_EX_TOOLWINDOW | 0x8 /* WS_EX_TOPMOST */;
+        return CreateWindowEx(ex, cls, null, 0x80000000 /* WS_POPUP */, 0, 0, 1, 1, IntPtr.Zero, IntPtr.Zero, GetModuleHandle(null), IntPtr.Zero);
+    }
 
     delegate bool MonitorEnumProc(IntPtr m, IntPtr dc, ref Win32.RECT r, IntPtr data);
     [DllImport("user32.dll")] static extern bool EnumDisplayMonitors(IntPtr dc, IntPtr clip, MonitorEnumProc cb, IntPtr data);
@@ -80,63 +120,132 @@ static class GuideNative
     }
 }
 
-/// One click-through, see-through window over the screen being used; it only draws lines. A bare layered window
-/// (WS_EX_LAYERED | TRANSPARENT | NOACTIVATE | TOOLWINDOW, a STATIC control's class) that we fill ourselves: the picture is
-/// rendered in WPF, copied into a premultiplied DIB and handed to UpdateLayeredWindow — that call is also the fade (a
-/// constant alpha), so a fade costs a blit, not a redraw. Nothing exists on screen between drags.
+/// A bitmap in memory (a DIB section) — what UpdateLayeredWindow copies from. Painted by WPF once, then only ever copied.
+sealed class Pic
+{
+    public readonly IntPtr Dc;
+    public readonly int W, H;
+    readonly IntPtr dib, old;
+    Pic(IntPtr dc, IntPtr dib, IntPtr old, int w, int h) { Dc = dc; this.dib = dib; this.old = old; W = w; H = h; }
+
+    /// `w` × `h` pixels at `scale` (DPI / 96); `draw` speaks DIPs.
+    public static Pic? Paint(int w, int h, double scale, Action<DrawingContext> draw)
+    {
+        if (w <= 0 || h <= 0) return null;
+        var screen = GuideNative.GetDC(IntPtr.Zero);
+        var dc = GuideNative.CreateCompatibleDC(screen);
+        GuideNative.ReleaseDC(IntPtr.Zero, screen);
+        var bmi = new GuideNative.BITMAPINFOHEADER { biSize = Marshal.SizeOf<GuideNative.BITMAPINFOHEADER>(), biWidth = w, biHeight = -h, biPlanes = 1, biBitCount = 32 };
+        var dib = GuideNative.CreateDIBSection(dc, ref bmi, 0, out var bits, IntPtr.Zero, 0);
+        if (dib == IntPtr.Zero) { GuideNative.DeleteDC(dc); return null; }
+        var old = GuideNative.SelectObject(dc, dib);
+        var rtb = new RenderTargetBitmap(w, h, 96 * scale, 96 * scale, PixelFormats.Pbgra32);
+        var dv = new DrawingVisual();
+        using (var c = dv.RenderOpen()) draw(c);
+        rtb.Render(dv);
+        rtb.CopyPixels(Int32Rect.Empty, bits, w * h * 4, w * 4);
+        return new Pic(dc, dib, old, w, h);
+    }
+
+    public void Free()
+    {
+        GuideNative.SelectObject(Dc, old);
+        GuideNative.DeleteObject(dib);
+        GuideNative.DeleteDC(Dc);
+    }
+}
+
+/// One of the overlay's windows and where it is now. Moving it is SetWindowPos; its picture changes only when `Key` does.
+sealed class Piece
+{
+    public IntPtr Hwnd;
+    public bool Shown;
+    public int X, Y, W, H;                // pixels, on the desktop
+    public string Key = "";               // what picture is in the window now
+    public Pic? Pic;                      // …and where it came from (to put it back if a blend-only update is refused)
+}
+
+/// The grid while a window is dragged on one display — drawn ONCE per drag, then only pieces are moved
+/// (owner 14 Oct 2026: "the grid must not repaint the whole screen during a drag" — a screen-sized layered window is
+/// software-composited, so every redraw costs the screen's pixels: a 4K display would take several cores; same cause as the herd).
+///   • grid  — one click-through layered window the size of the display: squares, centre crosshair, dots, inked by the
+///             wallpaper. Rendered when the drag first reaches this display; after that only its constant alpha changes (the fade).
+///   • bands — four plain-colour windows (white 0.5 at 0.08) around the dragged window; SetLayeredWindowAttributes alpha,
+///             no bitmap; resized every frame.
+///   • blue dashes / mint glows — a small pool of thin windows, each holding one line's picture (rendered once per
+///             length and shared by every window of that kind); moved, shown and hidden as the lines come and go.
+/// All of them are WS_EX_LAYERED | TRANSPARENT | NOACTIVATE | TOOLWINDOW | TOPMOST (TOOLWINDOW: the cat's gravity must not
+/// take them for windows). Nothing exists on screen between drags.
 sealed class GuideOverlay
 {
-    IntPtr hwnd, memDc, dib, oldBmp, bits;
-    int w, h;
+    /// For the trace: full-screen uploads (the grid's picture), thin-window uploads, blend-only updates (fades), window
+    /// moves/resizes, and blend-only updates the system refused (then the picture is uploaded again).
+    public static int Renders, StripPics, Blends, Moves, Refused;
+
     GuideNative.Mon mon;
+    int w, h;
     double alpha;                       // 0…1: how far faded in
-    bool visible;
+    double target;                      // …and where it is heading (1 during a drag, 0 once let go)
     Later? fade;
-    RenderTargetBitmap? rtb;
     LumaMap? luma;
-    int lumaDrag = -1; IntPtr lumaMon;
+    int lumaDrag = -1, gridDrag = -1; IntPtr lumaMon;
 
-    /// What the picture is made of.
-    HashSet<Guide> guides = new(), lit = new();
-    Rect moving;                        // the dragged window, in this display's DIPs
+    readonly Piece grid = new();
+    Pic? gridPic;
+    readonly Piece[] bands = { new(), new(), new(), new() };
+    bool noBands;
+    readonly Dictionary<string, Pic> pics = new();            // the thin pictures, by key
+    sealed class Pool { public readonly List<Piece> Free = new(); public readonly Dictionary<Guide, Piece> Used = new(); }
+    readonly Pool blue = new(), mint = new();
 
-    public void Show(GuideNative.Mon m, HashSet<Guide> guidesNow, HashSet<Guide> litNow, Rect movingNow)
+    IEnumerable<Piece> Every() => new[] { grid }.Concat(bands).Concat(blue.Free).Concat(blue.Used.Values).Concat(mint.Free).Concat(mint.Used.Values);
+
+    /// The drag is on this display: make sure the picture is there for it and the pieces are where they belong.
+    public void Update(GuideNative.Mon m, HashSet<Guide> guides, HashSet<Guide> lit, Rect moving)
     {
-        fade?.Cancel();
+        if (target != 1) fade?.Cancel();                   // a fade-out from the last drag, or its wait
         if (!Ensure(m)) return;
-        guides = guidesNow; lit = litNow; moving = movingNow;
-        if (lumaDrag != WindowGuides.Drags || lumaMon != m.Handle) { luma = Wallpaper.Map(m.Px); lumaDrag = WindowGuides.Drags; lumaMon = m.Handle; }   // once per drag, not per frame
-        Render();
-        if (!visible)
+        if (!grid.Shown) alpha = 0;
+        if (gridPic == null || gridDrag != WindowGuides.Drags)
         {
-            alpha = 0; Apply();
-            Win32.SetWindowPos(hwnd, Win32.HWND_TOPMOST, 0, 0, 0, 0, Win32.SWP_NOMOVE | Win32.SWP_NOSIZE | Win32.SWP_NOACTIVATE | 0x40 /* SWP_SHOWWINDOW */);
-            visible = true;
+            if (lumaDrag != WindowGuides.Drags || lumaMon != m.Handle) { luma = Wallpaper.Map(m.Px); lumaDrag = WindowGuides.Drags; lumaMon = m.Handle; }
+            FreeGrid();
+            gridPic = Pic.Paint(w, h, mon.Scale, dc => DrawGrid(dc, guides));
+            gridDrag = WindowGuides.Drags;
+            if (gridPic == null) return;
+            Upload(grid, gridPic, mon.Px.Left, mon.Px.Top);
         }
-        else Apply();
-        if (alpha < 1) Ramp(1, 0.15, null);
+        else if (!grid.Shown) Blend(grid);                 // back on this display within the same drag: the same picture, from nothing
+        Place(grid, mon.Px.Left, mon.Px.Top, w, h, IntPtr.Zero);
+
+        Bands(moving);
+        Sync(blue, guides.Where(g => g.Smart && !lit.Contains(g)).ToList(), glow: false);
+        Sync(mint, lit.ToList(), glow: true);
+
+        if (target != 1) { target = 1; Ramp(1, 0.15, null); }
     }
 
     /// Mac: 0.4 s after you let go, a 0.3 s fade, then out of the way. Reduce Motion: no fade, just gone.
     public void FadeOut()
     {
-        if (!visible) return;
+        if (!grid.Shown) return;
         fade?.Cancel();
+        target = 0;
         fade = Later.After(0.4, () => { if (Fx.Reduced) Hide(); else Ramp(0, 0.3, Hide); });
     }
 
     public void Hide()
     {
         fade?.Cancel();
-        if (!visible) return;
-        visible = false; alpha = 0;
-        GuideNative.ShowWindow(hwnd, 0);
+        target = 0; alpha = 0;
+        foreach (var p in Every()) HidePiece(p);
+        foreach (var pool in new[] { blue, mint }) { pool.Free.AddRange(pool.Used.Values); pool.Used.Clear(); }
     }
 
     void Ramp(double to, double secs, Action? done)
     {
         fade?.Cancel();
-        if (Fx.Reduced) { alpha = to; Apply(); done?.Invoke(); return; }
+        if (Fx.Reduced || alpha == to) { alpha = to; Apply(); done?.Invoke(); return; }
         double from = alpha; var t0 = DateTime.Now;
         fade = Later.Every(1.0 / 30, t =>
         {
@@ -150,65 +259,170 @@ sealed class GuideOverlay
     public void Dispose()
     {
         fade?.Cancel();
-        if (hwnd != IntPtr.Zero) { GuideNative.DestroyWindow(hwnd); hwnd = IntPtr.Zero; }
-        FreeBitmap();
-        visible = false;
+        foreach (var p in Every()) if (p.Hwnd != IntPtr.Zero) { GuideNative.DestroyWindow(p.Hwnd); p.Hwnd = IntPtr.Zero; p.Shown = false; }
+        blue.Free.Clear(); blue.Used.Clear(); mint.Free.Clear(); mint.Used.Clear();
+        FreeGrid();
+        FreePics();
     }
 
-    // ── the window and its bitmap ──
+    // ── the windows ──
     bool Ensure(GuideNative.Mon m)
     {
         int nw = m.Px.Right - m.Px.Left, nh = m.Px.Bottom - m.Px.Top;
         if (nw <= 0 || nh <= 0) return false;
-        if (hwnd == IntPtr.Zero)
+        if (grid.Hwnd == IntPtr.Zero && !Make(grid, "Static")) return false;
+        if (nw != w || nh != h || m.Scale != mon.Scale)             // a different display (or mode): nothing of the old picture fits
         {
-            int ex = Win32.WS_EX_LAYERED | Win32.WS_EX_TRANSPARENT | Win32.WS_EX_NOACTIVATE | Win32.WS_EX_TOOLWINDOW | 0x8 /* WS_EX_TOPMOST */;
-            hwnd = GuideNative.CreateWindowEx(ex, "Static", null, 0x80000000 /* WS_POPUP */, m.Px.Left, m.Px.Top, nw, nh, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero);
-            if (hwnd == IntPtr.Zero) return false;
-        }
-        if (dib == IntPtr.Zero || nw != w || nh != h || m.Scale != mon.Scale)
-        {
-            FreeBitmap();
-            var screen = GuideNative.GetDC(IntPtr.Zero);
-            memDc = GuideNative.CreateCompatibleDC(screen);
-            GuideNative.ReleaseDC(IntPtr.Zero, screen);
-            var bmi = new GuideNative.BITMAPINFOHEADER { biSize = Marshal.SizeOf<GuideNative.BITMAPINFOHEADER>(), biWidth = nw, biHeight = -nh, biPlanes = 1, biBitCount = 32 };
-            dib = GuideNative.CreateDIBSection(memDc, ref bmi, 0, out bits, IntPtr.Zero, 0);
-            if (dib == IntPtr.Zero) return false;
-            oldBmp = GuideNative.SelectObject(memDc, dib);
-            rtb = new RenderTargetBitmap(nw, nh, 96 * m.Scale, 96 * m.Scale, PixelFormats.Pbgra32);
+            Hide();
+            FreeGrid();
+            FreePics();
             w = nw; h = nh;
         }
         mon = m;
         return true;
     }
-    void FreeBitmap()
+    void FreeGrid() { gridPic?.Free(); gridPic = null; grid.Pic = null; }
+    void FreePics()
     {
-        if (memDc != IntPtr.Zero && oldBmp != IntPtr.Zero) GuideNative.SelectObject(memDc, oldBmp);
-        if (dib != IntPtr.Zero) GuideNative.DeleteObject(dib);
-        if (memDc != IntPtr.Zero) GuideNative.DeleteDC(memDc);
-        dib = memDc = oldBmp = bits = IntPtr.Zero; rtb = null;
+        foreach (var p in pics.Values) p.Free();
+        pics.Clear();
+        foreach (var p in Every()) if (p != grid) p.Pic = null;
+    }
+    static bool Make(Piece p, string cls)
+    {
+        p.Hwnd = GuideNative.NewWindow(cls);
+        return p.Hwnd != IntPtr.Zero;
     }
 
-    /// Put the bitmap on screen at the current fade.
+    static GuideNative.BLENDFUNCTION Blendf(double alpha) => new() { BlendOp = 0 /* AC_SRC_OVER */, SourceConstantAlpha = (byte)Math.Round(alpha * 255), AlphaFormat = 1 /* AC_SRC_ALPHA: premultiplied */ };
+
+    /// Give a window its picture (and place), at the current fade. The only call that copies pixels.
+    void Upload(Piece p, Pic pic, int x, int y)
+    {
+        var pos = new Win32.POINT { X = x, Y = y };
+        var size = new GuideNative.SIZE { cx = pic.W, cy = pic.H };
+        var from = new Win32.POINT();
+        var blend = Blendf(alpha);
+        GuideNative.UpdateLayeredWindow(p.Hwnd, IntPtr.Zero, ref pos, ref size, pic.Dc, ref from, 0, ref blend, 2 /* ULW_ALPHA */);
+        p.X = x; p.Y = y; p.W = pic.W; p.H = pic.H; p.Pic = pic;
+        if (p == grid) Renders++; else StripPics++;
+    }
+
+    /// The fade: only the constant alpha changes — no bitmap is passed, nothing is copied.
+    void Blend(Piece p)
+    {
+        var blend = Blendf(alpha);
+        Blends++;
+        if (GuideNative.UpdateLayeredWindowBlend(p.Hwnd, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, 0, ref blend, 2)) return;
+        Refused++;
+        if (p.Pic != null) Upload(p, p.Pic, p.X, p.Y);
+    }
+
+    void BandAlpha(Piece b) => GuideNative.SetLayeredWindowAttributes(b.Hwnd, 0, (byte)Math.Round(20 * alpha), 2 /* LWA_ALPHA */);    // white 0.5 @ 0.08 = 20/255
+
+    /// Put the whole picture at the current fade.
     void Apply()
     {
-        if (hwnd == IntPtr.Zero || dib == IntPtr.Zero) return;
-        var pos = new Win32.POINT { X = mon.Px.Left, Y = mon.Px.Top };
-        var size = new GuideNative.SIZE { cx = w, cy = h };
-        var from = new Win32.POINT();
-        var blend = new GuideNative.BLENDFUNCTION { BlendOp = 0 /* AC_SRC_OVER */, SourceConstantAlpha = (byte)Math.Round(alpha * 255), AlphaFormat = 1 /* AC_SRC_ALPHA: premultiplied */ };
-        GuideNative.UpdateLayeredWindow(hwnd, IntPtr.Zero, ref pos, ref size, memDc, ref from, 0, ref blend, 2 /* ULW_ALPHA */);
+        if (grid.Shown) Blend(grid);
+        foreach (var b in bands) if (b.Shown) BandAlpha(b);
+        foreach (var p in blue.Used.Values.Concat(mint.Used.Values)) if (p.Shown) Blend(p);
     }
 
-    void Render()
+    /// Show a window at a place (a hidden one comes in just above `below`, or on top when that is zero); a shown one is
+    /// moved (and resized if it has to be) and nothing else.
+    void Place(Piece p, int x, int y, int cw, int ch, IntPtr below)
     {
-        if (rtb == null) return;
-        var dv = new DrawingVisual();
-        using (var dc = dv.RenderOpen()) Draw(dc);
-        rtb.Clear();
-        rtb.Render(dv);
-        rtb.CopyPixels(Int32Rect.Empty, bits, w * h * 4, w * 4);
+        bool size = p.W != cw || p.H != ch;
+        if (p.Shown && !size && p.X == x && p.Y == y) return;
+        uint f = Win32.SWP_NOACTIVATE | (size ? 0 : Win32.SWP_NOSIZE);
+        var after = IntPtr.Zero;
+        if (p.Shown) f |= Win32.SWP_NOZORDER;
+        else { f |= 0x40 /* SWP_SHOWWINDOW */; after = below == IntPtr.Zero ? Win32.HWND_TOPMOST : below; }
+        Win32.SetWindowPos(p.Hwnd, after, x, y, cw, ch, f);
+        p.X = x; p.Y = y; p.W = cw; p.H = ch; p.Shown = true;
+        Moves++;
+    }
+    static void HidePiece(Piece p)
+    {
+        if (!p.Shown) return;
+        GuideNative.ShowWindow(p.Hwnd, 0);
+        p.Shown = false;
+    }
+
+    // ── what moves: the bands ──
+    /// The dragged window's shadow on all four sides (owner 13 Oct 2026: "a greyed out movement shower on all four sides,
+    /// very light"): a faint band at the window's height across the screen and one at its width down the screen — four
+    /// rectangles that do not overlap, clipped to the display. Under the grid, as before.
+    void Bands(Rect r)
+    {
+        if (noBands) return;
+        double s = mon.Scale;
+        int l = (int)Math.Round(r.Left * s), t = (int)Math.Round(r.Top * s), rt = (int)Math.Round(r.Right * s), b = (int)Math.Round(r.Bottom * s);
+        var rects = new[] { (0, t, l, b), (rt, t, w, b), (l, 0, rt, t), (l, b, rt, h) };
+        for (int i = 0; i < 4; i++)
+        {
+            var (x0, y0, x1, y1) = rects[i];
+            x0 = Math.Max(0, x0); y0 = Math.Max(0, y0); x1 = Math.Min(w, x1); y1 = Math.Min(h, y1);
+            if (x1 <= x0 || y1 <= y0) { HidePiece(bands[i]); continue; }
+            if (bands[i].Hwnd == IntPtr.Zero)
+            {
+                var cls = GuideNative.BandClass();
+                if (cls == null || !Make(bands[i], cls)) { noBands = true; return; }
+            }
+            if (!bands[i].Shown) BandAlpha(bands[i]);
+            Place(bands[i], mon.Px.Left + x0, mon.Px.Top + y0, x1 - x0, y1 - y0, grid.Hwnd);
+        }
+    }
+
+    // ── what comes and goes: dashes and glows ──
+    /// One line's thin window: where, how big, which picture. The line is at `At` pixels across the window and runs its length.
+    readonly record struct Strip(string Key, int X, int Y, int W, int H, bool Vertical, int At, int Len);
+
+    /// null: the line is off this display.
+    Strip? Geometry(Guide g, bool glow)
+    {
+        double sc = mon.Scale;
+        bool v = g.Vertical;
+        int along = v ? h : w, extent = v ? w : h;
+        int p = (int)Math.Round(g.At * sc);                                          // = Snap(): one device pixel
+        // dash: the line and its shadow, 2 pt across; glow: its widest stroke reaches 4.75 pt before the line and 6.25 after
+        int before = glow ? (int)Math.Ceiling(5 * sc) : 0, after = (int)Math.Ceiling((glow ? 6.5 : 2) * sc);
+        int lo = Math.Max(0, p - before), hi = Math.Min(extent, p + after);
+        if (hi <= lo) return null;
+        string key = $"{(glow ? 'g' : 'd')}{(v ? 'v' : 'h')}|{along}|{p - lo}|{hi - lo}|{sc}";
+        return v ? new Strip(key, lo, 0, hi - lo, along, true, p - lo, along) : new Strip(key, 0, lo, along, hi - lo, false, p - lo, along);
+    }
+
+    void Sync(Pool pool, List<Guide> wanted, bool glow)
+    {
+        var specs = new Dictionary<Guide, Strip>();
+        foreach (var g in wanted) if (Geometry(g, glow) is Strip s) specs[g] = s;
+        foreach (var (g, p) in pool.Used.ToList())
+            if (!specs.ContainsKey(g)) { HidePiece(p); pool.Used.Remove(g); pool.Free.Add(p); }
+        foreach (var (g, s) in specs)
+        {
+            if (!pool.Used.TryGetValue(g, out var p))
+            {
+                int i = pool.Free.FindIndex(f => f.Key == s.Key);                    // prefer a window that already holds this picture
+                if (i < 0) i = pool.Free.Count - 1;
+                if (i >= 0) { p = pool.Free[i]; pool.Free.RemoveAt(i); }
+                else { p = new Piece(); if (!Make(p, "Static")) continue; }
+                pool.Used[g] = p;
+            }
+            int x = mon.Px.Left + s.X, y = mon.Px.Top + s.Y;
+            if (p.Key != s.Key)
+            {
+                if (!pics.TryGetValue(s.Key, out var cached))
+                {
+                    cached = Pic.Paint(s.W, s.H, mon.Scale, dc => Solid(dc, s.Vertical, s.At / mon.Scale, s.Len / mon.Scale, glow ? Mint : Blue, glow ? 1.5 : 1, dashed: !glow, glow: glow));
+                    if (cached == null) continue;
+                    pics[s.Key] = cached;
+                }
+                Upload(p, cached, x, y);
+                p.Key = s.Key;
+            }
+            Place(p, x, y, s.W, s.H, IntPtr.Zero);
+        }
     }
 
     // ── the look (GuideView) ──
@@ -216,6 +430,7 @@ sealed class GuideOverlay
     // crossing and brighter centre lines with a small crosshair, all INKED BY THE WALLPAPER under them — dark ink over
     // light patches, light ink over dark ones, changing along a line as the wallpaper changes, each with a faint opposite
     // twin so it still reads over a window. Neighbour edges are a calm blue dash; an aligned line glows mint green.
+    // (The inked line stays under the mint glow of a line that lights up — the grid is not repainted on landing.)
     static readonly Color Blue = Color.FromArgb(230, 89, 173, 255);                 // srgb 0.35 0.68 1.0 @ 0.9
     /// "You got it" (owner 13 Oct 2026: the orange "needs to be some other color") — a mint green that reads as
     /// correct, stays clear of the cats' orange, and glows on dark and light wallpapers alike.
@@ -241,21 +456,15 @@ sealed class GuideOverlay
     /// A device-pixel-aligned position, so a hairline is one crisp pixel.
     double Snap(double v) => Math.Round(v * mon.Scale) / mon.Scale;
 
-    void Draw(DrawingContext dc)
+    /// The part of the picture that never changes during a drag: the squares, the dots, the centre crosshair.
+    void DrawGrid(DrawingContext dc, HashSet<Guide> all)
     {
         double hair = 1 / mon.Scale;
-        // The window's shadow on all four sides (owner 13 Oct 2026: "a greyed out movement shower on all four sides, very
-        // light"): a faint band at the window's height across the screen and one at its width down the screen.
-        var r = moving;
-        var band = Paint(Color.FromArgb(20, 128, 128, 128));                         // white 0.5 @ 0.08
-        foreach (var (ax, ay, aw, ah) in new[] { (0, r.Top, r.Left, r.Height), (r.Right, r.Top, W - r.Right, r.Height),
-                                                 (r.Left, 0, r.Width, r.Top), (r.Left, r.Bottom, r.Width, H - r.Bottom) })
-            if (aw > 0 && ah > 0) dc.DrawRectangle(band, null, new Rect(ax, ay, aw, ah));
-
-        foreach (var g in guides) if (!g.Smart && !lit.Contains(g)) Inked(dc, g, g.Major ? 1 : hair, g.Major ? 2 : 1);
+        var guides = all.Where(g => !g.Smart).ToList();
+        foreach (var g in guides) Inked(dc, g, g.Major ? 1 : hair, g.Major ? 2 : 1);
         // a dot where two grid lines cross
         var xs = new List<double>(); var ys = new List<double>();
-        foreach (var g in guides) if (!g.Smart) (g.Vertical ? xs : ys).Add(g.At);
+        foreach (var g in guides) (g.Vertical ? xs : ys).Add(g.At);
         foreach (var x in xs) foreach (var y in ys)
         {
             var (c, t) = Ink(Light(x, y), 2.6);
@@ -273,8 +482,6 @@ sealed class GuideOverlay
             dc.DrawGeometry(null, new Pen(Paint(tw), 3.5), plus);
             dc.DrawGeometry(null, new Pen(Paint(fg), 1.5), plus);
         }
-        foreach (var g in guides) if (g.Smart && !lit.Contains(g)) Solid(dc, g, Blue, 1, dashed: true);
-        foreach (var g in lit) Solid(dc, g, Mint, 1.5, glow: true);
     }
 
     /// A grid line drawn in short pieces, each inked by the wallpaper under its middle. Neighbouring pieces with the
@@ -301,13 +508,13 @@ sealed class GuideOverlay
         Flush(len);
     }
 
-    void Solid(DrawingContext dc, Guide g, Color color, double width, bool dashed = false, bool glow = false)
+    /// A neighbour's dash or a lit line's glow, in a thin picture of its own: the line is `a` pt across the picture and `len` pt long.
+    static void Solid(DrawingContext dc, bool vertical, double a, double len, Color color, double width, bool dashed = false, bool glow = false)
     {
-        double a = Snap(g.At), len = g.Vertical ? H : W;
-        LineGeometry Line(double o) => g.Vertical ? new LineGeometry(new Point(a + o, 0), new Point(a + o, len)) : new LineGeometry(new Point(0, a + o), new Point(len, a + o));
+        LineGeometry Line(double o) => vertical ? new LineGeometry(new Point(a + o, 0), new Point(a + o, len)) : new LineGeometry(new Point(0, a + o), new Point(len, a + o));
         Pen P(Color c, double thick) => new(Paint(c), thick) { DashStyle = dashed ? new DashStyle(new[] { 4.0, 4.0 }, 0) : DashStyles.Solid };
         dc.DrawGeometry(null, P(Alpha(Colors.Black, 0.25), width), Line(width + width / 2));
-        // shadowBlurRadius 8 in colour @ 0.9 → three widening strokes at falling opacity (an effect on a full-screen layered window would be software too)
+        // shadowBlurRadius 8 in colour @ 0.9 → three widening strokes at falling opacity (an effect on a layered window would be software too)
         if (glow) foreach (var (gw, ga) in new[] { (11.0, 0.07), (7.0, 0.13), (4.0, 0.25) }) dc.DrawGeometry(null, P(Alpha(color, ga), gw), Line(width / 2));
         dc.DrawGeometry(null, P(color, width), Line(width / 2));
     }

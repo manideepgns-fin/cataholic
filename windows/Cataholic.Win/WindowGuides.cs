@@ -17,7 +17,10 @@ namespace Cataholic;
 // and, while it is being moved, where it is (LOCATIONCHANGE, hooked only for that window's thread and only for the
 // length of the drag — so the resting cost is two events per drag, nothing otherwise). Window rects come from the same
 // enumeration the cat's gravity uses (DWM frame bounds, never GetWindowRect). Each monitor has its own click-through
-// overlay (GuideOverlay), shown only during a drag and hidden after the fade.
+// overlay (GuideOverlay), shown only during a drag and hidden after the fade. The overlay is one screen-sized picture
+// of the grid, painted ONCE per drag (a screen-sized layered window is software-composited — repainting it 30×/s cost
+// ~1/3 of a core at 1024×768 and would be ~10× that at 4K), plus small windows that are only MOVED while you drag:
+// four bands around the window, a thin window per blue dash, one per lit line.
 // Coordinates: the grid, the guides and the moving window are all in the DIPs of the MONITOR they are on, y down from
 // that monitor's top-left (mixed-DPI desktops get 220-pt squares on each).
 static class WindowGuides
@@ -27,7 +30,7 @@ static class WindowGuides
 
     public const double Near = 60;           // a neighbour's edge shows up once we're this close
     public const double Snap = 4;            // ≤ this from a line counts as "on" it
-    const double MinGap = 1.0 / 30;          // redraw at most 30 times a second (a full-screen layered window is software-drawn)
+    const double MinGap = 1.0 / 30;          // move the pieces at most 30 times a second
 
     public readonly record struct Guide(bool Vertical, double At, bool Smart, bool Major = false);
 
@@ -46,10 +49,12 @@ static class WindowGuides
     static Later? tick;
     static string lastDrawn = "";
 
-    /// For the trace: drags seen, location events, redraws, and how long the last redraw took (ms).
+    /// For the trace: drags seen, location events, frames (position updates applied) and how long the last one took (ms), then the
+    /// overlay's counters: gups = full-screen uploads (must be 1 per display per drag), gstrips = thin-window uploads (one per
+    /// kind of line), gblends = fade updates (no pixels copied), gmoves = SetWindowPos calls.
     public static int Drags, Events, Draws, LitNow;
     public static double DrawMs;
-    public static string Trace => $"grid={(startEndHook != IntPtr.Zero ? "on" : "off")} drags={Drags} locs={Events} gdraws={Draws} gdrawMs={DrawMs:0.0} lit={LitNow} fullDrag={GuideNative.FullWindowDrag}";
+    public static string Trace => $"grid={(startEndHook != IntPtr.Zero ? "on" : "off")} drags={Drags} locs={Events} gdraws={Draws} gdrawMs={DrawMs:0.0} gups={GuideOverlay.Renders} gstrips={GuideOverlay.StripPics} gblends={GuideOverlay.Blends} gmoves={GuideOverlay.Moves} grefused={GuideOverlay.Refused} lit={LitNow} fullDrag={GuideNative.FullWindowDrag}";
 
     public static void Start()
     {
@@ -155,14 +160,14 @@ static class WindowGuides
         // (Mac: a haptic tap here when a line newly lights up — `!on.subtracting(lit).isEmpty`.)
         lit = on; LitNow = on.Count;
 
-        // nothing changed since the last picture → nothing to repaint
-        string key = $"{mon.Handle}|{win}|{string.Join(",", on.Select(g => (g.Vertical ? "v" : "h") + g.At))}|{all.Count}";
+        // nothing changed since the last frame → nothing to move
+        string key = $"{mon.Handle}|{win}|{string.Join(",", on.Select(g => (g.Vertical ? "v" : "h") + g.At))}|{string.Join(",", all.Where(g => g.Smart).Select(g => (g.Vertical ? "v" : "h") + g.At))}";
         if (key == lastDrawn) return;
         lastDrawn = key;
         var sw = Stopwatch.StartNew();
         foreach (var kv in overlays) if (kv.Key != mon.Handle) kv.Value.Hide();                // the window moved to another display: that display's lines go
         if (!overlays.TryGetValue(mon.Handle, out var ov)) overlays[mon.Handle] = ov = new GuideOverlay();
-        ov.Show(mon, all, on, win);
+        ov.Update(mon, all, on, win);
         Draws++; DrawMs = sw.Elapsed.TotalMilliseconds;
     }
 
