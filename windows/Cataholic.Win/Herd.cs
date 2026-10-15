@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 
 namespace Cataholic;
@@ -39,8 +40,9 @@ sealed class CatHerd
 
     public static readonly CatHerd Shared = new();
     public List<Cat> Cats { get; private set; } = new();
-    /// For the trace: windows made, window moves, pose redraws since the herd was last rebuilt.
+    /// For the trace, since the herd was last rebuilt: windows made, window moves, picture swaps, and the time (ms) in the last two.
     public int Windows, Moves, Draws;
+    public double MoveMs, DrawMs;
     DispatcherTimer? timer;
     List<CatGravity.Win> wins = new();
     double winsAt, last;
@@ -54,7 +56,8 @@ sealed class CatHerd
     {
         timer?.Stop(); timer = null;
         foreach (var c in Cats) c.Win?.Close();
-        Windows = Moves = Draws = 0;
+        Windows = Moves = Draws = 0; MoveMs = DrawMs = 0;
+        HerdFrames.Clear();
         int n = CatPrefs.Quiet || Fx.Reduced || !CatPrefs.ShowCrew ? 0 : Count;
         if (n <= 0) { Cats = new(); return; }
         double w = CatLayout.ScreenW;
@@ -124,12 +127,15 @@ sealed class CatHerd
             // the window follows the cat; the picture is redrawn only if the pose changed
             if (c.Win == null && c.Feet - CatGravity.Feet - HerdCatWindow.Pad + HerdCatWindow.H > 0)
             {
-                c.Win = new HerdCatWindow(c.Coat); Windows++; made = true;
+                c.Win = new HerdCatWindow(); Windows++; made = true;
             }
             if (c.Win != null)
             {
+                long t0 = Stopwatch.GetTimestamp();
                 if (c.Win.Draw(c, now)) Draws++;                                  // (before the first Show: it appears drawn)
+                long t1 = Stopwatch.GetTimestamp();
                 if (c.Win.MoveTo(c.X - HerdCatWindow.Pad, c.Feet - CatGravity.Feet - HerdCatWindow.Pad)) Moves++;
+                DrawMs += (t1 - t0) * 1000.0 / Stopwatch.Frequency; MoveMs += (Stopwatch.GetTimestamp() - t1) * 1000.0 / Stopwatch.Frequency;
                 busy |= c.Win.Stale(c);
             }
             busy |= c.Mode is Mode.Fall or Mode.Walk or Mode.Zoom || c.Squash != 1;
@@ -155,25 +161,22 @@ sealed class CatHerd
 }
 
 /// One herd cat: a small borderless, transparent, topmost window that ignores the mouse, the character box + a margin
-/// (CatLayout). Moving the cat is SetWindowPos — no redraw; the picture is redrawn only when the pose changes.
+/// (CatLayout). Moving the cat is SetWindowPos — no redraw; the picture is swapped only when the pose changes.
 sealed class HerdCatWindow : Window
 {
     public const double Pad = CatLayout.Margin * CatLayout.Zoom;          // the margin around the 46×62 box, on screen
     public const double W = CatLayout.ScreenW + 2 * Pad, H = CatLayout.ScreenH + 2 * Pad;
-    const double Gap = 0.04, ZoomGap = 0.028;       // fewest seconds between two redraws: legs at ~15 fps walking, every tick dashing
+    const double Gap = 0.04, ZoomGap = 0.028;       // fewest seconds between two swaps: legs at ~15 fps walking, every tick dashing
 
     readonly CatSprite sprite = new();
-    readonly CatCoat coat;
     IntPtr hwnd;
     double left, top;
     int px = int.MinValue, py = int.MinValue;
-    // what is on the window now
-    bool drawn;
-    CatHerd.Mode dMode; double dPhase, dSquash, dFacing, dAt;
+    HerdFrames.Look? shown;                         // what is on the window now
+    double shownAt;
 
-    public HerdCatWindow(CatCoat coat)
+    public HerdCatWindow()
     {
-        this.coat = coat;
         WindowStyle = WindowStyle.None; AllowsTransparency = true; Background = Brushes.Transparent;
         Topmost = true; ShowInTaskbar = false; ShowActivated = false; ResizeMode = ResizeMode.NoResize;
         Width = W; Height = H;
@@ -185,7 +188,6 @@ sealed class HerdCatWindow : Window
             Win32.AddExStyle(hwnd, Win32.WS_EX_NOACTIVATE | Win32.WS_EX_TOOLWINDOW | Win32.WS_EX_TRANSPARENT | Win32.WS_EX_LAYERED);
             Display.Place(hwnd, new Rect(left, top, W, H));
         };
-        Left = left; Top = top;
     }
 
     /// Put the window at (x, y) DIPs; true if it actually moved a pixel.
@@ -200,29 +202,59 @@ sealed class HerdCatWindow : Window
         return true;
     }
 
-    public bool Stale(CatHerd.Cat c) => !drawn || dMode != c.Mode || dPhase != c.Phase || dSquash != c.Squash || dFacing != c.Facing;
+    public bool Stale(CatHerd.Cat c) => shown != HerdFrames.LookOf(c);
 
-    /// Redraw if the pose changed (a turn or a new mode at once; leg phase and squash at most every `Gap`). true if redrawn.
+    /// Swap the picture if the pose changed (a turn or a new mode at once; leg phase and squash at most every `Gap`). true if swapped.
     public bool Draw(CatHerd.Cat c, double now)
     {
-        if (!Stale(c)) return false;
-        bool now_ = !drawn || dMode != c.Mode || dFacing != c.Facing;
-        if (!now_ && now - dAt < (c.Mode == CatHerd.Mode.Zoom ? ZoomGap : Gap)) return false;
-        drawn = true; dMode = c.Mode; dPhase = c.Phase; dSquash = c.Squash; dFacing = c.Facing; dAt = now;
-        sprite.Draw(c, coat);
+        var look = HerdFrames.LookOf(c);
+        if (shown is HerdFrames.Look s)
+        {
+            if (s == look) return false;
+            if (s.Mode == look.Mode && s.Facing == look.Facing && now - shownAt < (c.Mode == CatHerd.Mode.Zoom ? ZoomGap : Gap)) return false;
+        }
+        shown = look; shownAt = now;
+        sprite.Show(HerdFrames.Get(look));
         return true;
     }
 }
 
+/// The window's content: whatever picture it is told to show.
 sealed class CatSprite : FrameworkElement
 {
     readonly DrawingVisual visual = new();
-    static readonly CatPose Pose = new() { Pin = false };
     public CatSprite() => AddVisualChild(visual);
     protected override int VisualChildrenCount => 1;
     protected override Visual GetVisualChild(int index) => visual;
 
-    static CatState Skin(CatHerd.Cat c) => c.Mode switch
+    public void Show(BitmapSource frame)
+    {
+        using var dc = visual.RenderOpen();
+        dc.DrawImage(frame, new Rect(0, 0, HerdCatWindow.W, HerdCatWindow.H));
+    }
+}
+
+/// The herd's pictures. Drawing the vector cat costs far more than showing a bitmap, so every pose a herd cat can take —
+/// coat × mode × leg phase × squash × facing, the last three quantised — is drawn once, the first time it is wanted, and
+/// kept; a swap is then one bitmap blit.
+static class HerdFrames
+{
+    const int WalkSteps = 12, ZoomSteps = 16, SquashSteps = 20;
+    public readonly record struct Look(CatCoat Coat, CatHerd.Mode Mode, int Step, int Squash, int Facing);
+
+    static readonly Dictionary<Look, BitmapSource> Cache = new();
+    static readonly CatPose Pose = new() { Pin = false };
+    public static void Clear() => Cache.Clear();                          // the pixel size follows the display scale
+
+    public static Look LookOf(CatHerd.Cat c)
+    {
+        int steps = Steps(c.Mode);
+        int step = steps == 1 ? 0 : ((int)Math.Round(c.Phase / (2 * Math.PI) * steps) % steps + steps) % steps;
+        return new(c.Coat, c.Mode, step, (int)Math.Round((1 - c.Squash) * SquashSteps), c.Facing < 0 ? -1 : 1);
+    }
+    static int Steps(CatHerd.Mode m) => m == CatHerd.Mode.Walk ? WalkSteps : m == CatHerd.Mode.Zoom ? ZoomSteps : 1;
+
+    static CatState Skin(CatHerd.Mode m) => m switch
     {
         CatHerd.Mode.Fall => CatState.Alert,
         CatHerd.Mode.Walk or CatHerd.Mode.Zoom => CatState.Running,
@@ -230,14 +262,23 @@ sealed class CatSprite : FrameworkElement
         _ => CatState.Look,
     };
 
-    public void Draw(CatHerd.Cat c, CatCoat coat)
+    public static BitmapSource Get(Look k)
     {
-        using var dc = visual.RenderOpen();
-        Pose.State = Skin(c); Pose.RunPhase = c.Phase; Pose.Stride = c.Mode == CatHerd.Mode.Zoom ? 38 : 22; Pose.CoatOverride = coat;
-        dc.PushTransform(new TranslateTransform(HerdCatWindow.Pad, HerdCatWindow.Pad));
-        dc.PushTransform(new ScaleTransform(CatLayout.Zoom, CatLayout.Zoom));
-        dc.PushTransform(new ScaleTransform(c.Facing * (1 + (1 - c.Squash) * 0.6), c.Squash, 23, 49));
-        CatDrawing.Draw(dc, Pose);
-        dc.Pop(); dc.Pop(); dc.Pop();
+        if (Cache.TryGetValue(k, out var f)) return f;
+        double squash = 1 - k.Squash / (double)SquashSteps;
+        Pose.State = Skin(k.Mode); Pose.RunPhase = k.Step * 2 * Math.PI / Steps(k.Mode); Pose.Stride = k.Mode == CatHerd.Mode.Zoom ? 38 : 22; Pose.CoatOverride = k.Coat;
+        var v = new DrawingVisual();
+        using (var dc = v.RenderOpen())
+        {
+            dc.PushTransform(new TranslateTransform(HerdCatWindow.Pad, HerdCatWindow.Pad));
+            dc.PushTransform(new ScaleTransform(CatLayout.Zoom, CatLayout.Zoom));
+            dc.PushTransform(new ScaleTransform(k.Facing * (1 + (1 - squash) * 0.6), squash, 23, 49));
+            CatDrawing.Draw(dc, Pose);
+            dc.Pop(); dc.Pop(); dc.Pop();
+        }
+        double dpi = 96 * Display.Scale;
+        var bmp = new RenderTargetBitmap(Display.Px(HerdCatWindow.W), Display.Px(HerdCatWindow.H), dpi, dpi, PixelFormats.Pbgra32);
+        bmp.Render(v); bmp.Freeze();
+        return Cache[k] = bmp;
     }
 }
