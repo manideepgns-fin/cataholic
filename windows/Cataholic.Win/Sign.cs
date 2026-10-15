@@ -79,6 +79,7 @@ sealed partial class CatModel
 sealed partial class CatView
 {
     Rect whisperBox = Rect.Empty;          // where the bubble was last drawn (the view's own coordinates), for the tap
+    (string Text, double Ppd, FormattedText Ft)? whisperLaid;
     bool WhisperHit(Point p) => whisperBox.Contains(p);
 
     static readonly Brush WhisperShadow = new SolidColorBrush(Color.FromArgb(14, 0, 0, 0));
@@ -94,8 +95,12 @@ sealed partial class CatView
         var b = CatLayout.Whisper;
         double fx = box.X + b.X0 * CatLayout.Zoom, fy = box.Y + b.Y0 * CatLayout.Zoom;
         double fw = (b.X1 - b.X0) * CatLayout.Zoom, fh = (b.Y1 - b.Y0) * CatLayout.Zoom;
-        var ft = new FormattedText(w, CultureInfo.InvariantCulture, FlowDirection.LeftToRight, WhisperFace, 13, Ink,
-            VisualTreeHelper.GetDpi(this).PixelsPerDip) { MaxTextWidth = fw - 20, MaxLineCount = 1, Trimming = TextTrimming.CharacterEllipsis };
+        // laid out once per text: the hops redraw her 30 times a second while it hangs there
+        double ppd = VisualTreeHelper.GetDpi(this).PixelsPerDip;
+        if (whisperLaid is not var (lt, lp, _) || lt != w || lp != ppd)
+            whisperLaid = (w, ppd, new FormattedText(w, CultureInfo.InvariantCulture, FlowDirection.LeftToRight, WhisperFace, 13, Ink, ppd)
+                { MaxTextWidth = fw - 20, MaxLineCount = 1, Trimming = TextTrimming.CharacterEllipsis });
+        var ft = whisperLaid!.Value.Ft;
         double bw = ft.Width + 20, bh = ft.Height + 12;
         var r = new Rect(CatLayout.WhisperOnRight ? fx : fx + fw - bw, fy + (fh - bh) / 2, bw, bh);
         // the soft shadow (black .18, blur 3, 1 down) as three fading rims — a real blur effect would slow a layered window

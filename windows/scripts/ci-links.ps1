@@ -40,15 +40,18 @@ function Shot($s) {
   Log "t=$($s)s alive=$(-not $cat.HasExited) cpu=$($cpu)s mem=$($mem)MB"
 }
 # a link, opened through the shell exactly as a user (or a browser) would
+function Cpu($s, $what) { At $s; Log "t=$($s)s cpu=$((Get-Process -Id $cat.Id).TotalProcessorTime.TotalSeconds)s ($what)" }
 function Link($s, $url) { At $s; Log "t=$($s)s link $url"; Start-Process $url }
 function Cats { (Get-Process -Name Cataholic -ErrorAction SilentlyContinue | Measure-Object).Count }
 
 Shot 3                                            # the cat at rest, before any link (CPU baseline)
 Log "registry: $((Get-ItemProperty 'HKCU:\Software\Classes\cataholic\shell\open\command' -ErrorAction SilentlyContinue).'(default)')"
 Log "processes before: $(Cats)"
+Cpu 3.9 'at rest, no sign'
 Link 4 'cataholic://sign?count=3&note=CI'         # sign up with 3, whisper "New notification from CI", two hops
 Shot 5
 Shot 8                                            # the whisper is gone (3 s), the sign stays
+Cpu 8.1 'sign held, bubble gone, idle — from here to the next line is her resting CPU with the sign up'
 # a second launch with no link — what a double-click on the exe does: it must exit within ~1 s and leave one process
 At 8.5
 $sw = [Diagnostics.Stopwatch]::StartNew()
@@ -58,6 +61,7 @@ $done = $p2.WaitForExit(5000)
 $sw.Stop()
 Log "second launch: exited=$done after $($sw.ElapsedMilliseconds) ms (exit code $(if ($done) { $p2.ExitCode } else { '-' })); Cataholic processes now: $(Cats)"
 if (-not $done) { Stop-Process -Id $p2.Id -ErrorAction SilentlyContinue }
+Cpu 10.4 'sign held, idle'
 Link 10.5 'cataholic://sign?count=12&note=CI'     # up again: whispers again, the sign reads 9+
 Shot 11.5
 Link 14 'cataholic://sign?count=0'                # down: the sign goes away, no whisper
