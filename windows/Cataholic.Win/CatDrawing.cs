@@ -93,11 +93,18 @@ public static class CatDrawing
         }
 
         /// A text run as a filled outline: `center` puts (x, y) at the middle of the text box, otherwise at its top-left.
-        Geometry Txt(string s, double size, string family, FontWeight weight, double x, double y, bool center)
+        /// `tallY` stretches the glyphs vertically about their baseline and `lift` moves them up — Segoe UI's lowercase z is
+        /// shorter than SF Rounded's, so the ink is matched to the Mac's.
+        Geometry Txt(string s, double size, string family, FontWeight weight, double x, double y, bool center, double tallY = 1, double lift = 0)
         {
             var ft = new FormattedText(s, CultureInfo.InvariantCulture, FlowDirection.LeftToRight,
                 new Typeface(new FontFamily(family), FontStyles.Normal, weight, FontStretches.Normal), size, Brushes.Black, 1.0);
             var g = ft.BuildGeometry(center ? new Point(x - ft.Width / 2, y - ft.Height / 2) : new Point(x, y));
+            if (tallY != 1 || lift != 0)
+            {
+                double baseY = (center ? y - ft.Height / 2 : y) + ft.Baseline;
+                g.Transform = new MatrixTransform(1, 0, 0, tallY, 0, baseY * (1 - tallY) - lift);
+            }
             g.Freeze();
             return g;
         }
@@ -115,7 +122,7 @@ public static class CatDrawing
                 for (int k = 0; k < 2; k++)
                 {
                     double rise = Math.Max(0, p.ZRise - k * 5), op = k == 0 ? p.ZOpacity : (p.ZRise > 5 ? p.ZOpacity : 0);
-                    var g = Txt("z", k == 0 ? 9 : 7, "Segoe UI", FontWeights.Black, zx + rise * drift + k * 2, zy - rise, false);
+                    var g = Txt("z", k == 0 ? 9 : 7, "Segoe UI", FontWeights.Black, zx + rise * drift + k * 2, zy - rise, false, 1.14, 0.5);
                     dc.PushOpacity(op);
                     foreach (var (hw, ha) in new[] { (1.8, 0.2), (1.2, 0.3), (0.7, 0.4) }) Stroke(g, A(Paper, ha), hw, true);   // .shadow(Paper, radius 1.2) twice: a soft halo ~0.6 box pt wide
                     Fill(g, CatCoat.C(0.24, 0.26, 0.45));
@@ -124,7 +131,7 @@ public static class CatDrawing
             }
             if (p.State == CatState.Sleeping)
             {
-                var g = Txt("z", 10, "Consolas", FontWeights.SemiBold, 2 - p.ZRise * 0.8, 6 - p.ZRise, false);
+                var g = Txt("z", 10, "Consolas", FontWeights.SemiBold, 2 - p.ZRise * 0.8, 6 - p.ZRise, false, 1.1);
                 Fill(g, A(SecondaryLabel, p.ZOpacity));
             }
         }
@@ -389,7 +396,8 @@ public static class CatDrawing
             if (p.Bell)
             {
                 Fill(Oval(23 - bd / 2, 31.2 + (cb - 1), bd, bd), Gold);
-                var glyph = Txt(p.Glyph, 4.6 * bd / 6.4, "Segoe UI, Segoe UI Symbol", FontWeights.Black, 23, 31.2 + (cb - 1) + bd / 2, true);
+                // Swift: size 4.6 * bd / 6.4. Segoe UI Symbol's heart is ~25 % smaller at the same size, so 6.1 matches the Mac's ink.
+                var glyph = Txt(p.Glyph, 6.1 * bd / 6.4, "Segoe UI, Segoe UI Symbol", FontWeights.Black, 23, 31.2 + (cb - 1) + bd / 2, true);
                 Fill(glyph, A(Colors.Black, 0.55));
             }
             if (s == CatState.Working || s == CatState.Reading)
