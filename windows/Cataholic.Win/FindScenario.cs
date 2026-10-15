@@ -14,7 +14,8 @@ namespace Cataholic;
 //   25–31 s nothing scheduled: the CPU log between the 26 s and 30 s shots is "nothing animates while you look"
 //   31 s    three misses: the spotlight                                         → find/lost.png
 //   24 s    a real mouse wheel zooms at the pointer
-//   34 s    the level picker opens (shot 35 s); 36 s Esc closes the window (trace: open=False)
+//   33 s    level 5 found, then three misses: the moonlit kingdom → find/L5-found.png, L5-lost.png
+//   38 s    the level picker opens (shot 39 s); 40 s Esc closes the window (trace: open=False)
 // `find/*.png` are the game window drawn off-screen at its own size (1100×704), so they do not depend on the 1024×768
 // runner screen; the ci-run screenshots show the real window on the desktop.
 static class FindScenario
@@ -96,9 +97,21 @@ static class FindScenario
             At(31.3 + 0.1 * i, () => W?.Game.Guess(spots[k]));
         }
         At(32.5, () => { Snap("lost"); Say("three misses"); });
-        At(34.0, () => W?.ShowLevelPicker());                     // the level picker (shot at 35 s)
-        At(35.8, () => W?.CloseLevelPicker());
-        At(36.0, () => W?.PressEsc());                            // Esc closes
-        At(36.5, () => Say("after Esc"));
+        // the night kingdom after a round (the moonlit tint): found, then three misses
+        At(33.0, () => Play(5));
+        At(33.4, () => Click(Hidden()));
+        At(36.0, () => { Snap("L5-found"); Say("level 5 found, settled"); });
+        At(36.5, () => Play(5));
+        for (int i = 0; i < 3; i++)
+        {
+            var spots = new[] { new Point(1040, 90), new Point(1080, 120), new Point(980, 70) };
+            int k = i;
+            At(36.8 + 0.1 * i, () => W?.Game.Guess(spots[k]));
+        }
+        At(37.5, () => { Snap("L5-lost"); Say("level 5 three misses"); });
+        At(38.0, () => W?.ShowLevelPicker());                     // the level picker (shot at 39 s)
+        At(39.8, () => W?.CloseLevelPicker());
+        At(40.0, () => W?.PressEsc());                            // Esc closes
+        At(40.5, () => Say("after Esc"));
     }
 }

@@ -215,11 +215,20 @@ sealed class FindWindow : Window
         viewport.MouseLeave += (_, _) => Camera.Pointer = null;
         viewport.MouseWheel += OnWheel;
         viewport.IsManipulationEnabled = true;                         // touch pinch
-        viewport.ManipulationStarting += (_, e) => { e.ManipulationContainer = viewport; e.Mode = ManipulationModes.Scale; };
+        // A manipulation-enabled element gets no mouse events from touch, so the finger does everything itself: pinch zooms,
+        // a drag pans (when zoomed), a tap (moved ≤ 4 pt, not pinched) is a guess. (The mouse handlers ignore touch-made events.)
+        viewport.ManipulationStarting += (_, e) => { e.ManipulationContainer = viewport; e.Mode = ManipulationModes.Scale | ManipulationModes.Translate; };
         viewport.ManipulationDelta += (_, e) =>
         {
             double s = e.DeltaManipulation.Scale.X;
             if (Math.Abs(s - 1) > 1e-4) Camera.Zoom(Camera.Z * s, e.ManipulationOrigin);
+            Camera.Pan(e.DeltaManipulation.Translation);
+            e.Handled = true;
+        };
+        viewport.ManipulationCompleted += (_, e) =>
+        {
+            if (e.TotalManipulation.Translation.Length <= 4 && Math.Abs(e.TotalManipulation.Scale.X - 1) < 0.01)
+                Game.Guess(Camera.ToScene(e.ManipulationOrigin));
             e.Handled = true;
         };
         PreviewKeyDown += OnKey;
@@ -263,6 +272,7 @@ sealed class FindWindow : Window
     Point downAt;
     void OnDown(object? s, MouseButtonEventArgs e)
     {
+        if (e.StylusDevice != null) return;                                              // a touch: the manipulation handlers have it
         if (e.OriginalSource is DependencyObject d && IsInside(d, banner)) return;       // the banner's button
         downAt = e.GetPosition(viewport);
         Camera.DragFrom = Camera.Off; Camera.Dragging = false;
@@ -276,6 +286,7 @@ sealed class FindWindow : Window
     }
     void OnMove(object? s, MouseEventArgs e)
     {
+        if (e.StylusDevice != null) return;
         var p = e.GetPosition(viewport);
         Camera.Pointer = p;
         if (Camera.DragFrom is Point from && viewport.IsMouseCaptured)
@@ -289,6 +300,7 @@ sealed class FindWindow : Window
     }
     void OnUp(object? s, MouseButtonEventArgs e)
     {
+        if (e.StylusDevice != null) return;
         if (Camera.DragFrom == null) return;
         viewport.ReleaseMouseCapture();
         if (!Camera.Dragging) Game.Guess(Camera.ToScene(e.GetPosition(viewport)));       // a drag is never a guess
