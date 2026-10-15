@@ -117,6 +117,7 @@ sealed class FindWindow : Window
     ContextMenu? levelMenu;
     readonly Button bannerButton;
     DispatcherTimer? clock;
+    readonly FindMultiply multiply = new();
     // what the scene layer was last painted for: it repaints only for a new layout or the round ending
     object? paintedCats; bool paintedPlaying;
 
@@ -349,6 +350,7 @@ sealed class FindWindow : Window
             scene.Redraw();
         }
         nightLights.Visibility = R.Night ? Visibility.Visible : Visibility.Collapsed;
+        scene.Effect = R.Night && !playing ? multiply : null;                 // the moonlit tint once the round is over
         nightLights.Redraw(); darkness.Redraw(); marks.Redraw(); spot.Redraw(); pop.Redraw(); sparks.Redraw();
         bool over = !playing, found = Game.Phase == FindGame.Phases.Found;
         int level = R.Level;
@@ -501,12 +503,7 @@ sealed class FindWindow : Window
             g.Dc.DrawRectangle(brush, null, full);
             g.Stroke(Gfx.Ell(lantern.X - R * 0.98, lantern.Y - R * 0.98, R * 1.96, R * 1.96), Gfx.Op(Gfx.C(1, 0.86, 0.5), 0.18), 3 / Camera.Z);
         }
-        else
-        {
-            // The Mac multiplies the scene by (0.40, 0.44, 0.68). WPF has no blend modes: a translucent navy gives the same
-            // result on white (0.40, 0.44, 0.68) and close on mid tones.
-            g.Dc.DrawRectangle(Gfx.B(Gfx.Op(Gfx.C(0.143, 0.2, 0.543), 0.7)), null, full);
-        }
+        // (once the round is over the whole kingdom takes the moonlit tint instead: FindMultiply on the scene layer, set in OnGame)
     }
 
     /// The paw prints and hints: glued to the art (scene points) but kept at their screen size whatever the zoom.
@@ -709,4 +706,37 @@ static class FindCli
         using var o = new System.IO.StreamWriter(Console.OpenStandardOutput(), new System.Text.UTF8Encoding(false)) { AutoFlush = true };
         return FindCheck.Run(n, o.WriteLine);
     }
+}
+
+/// SwiftUI's `.blendMode(.multiply)` over the night scene: every pixel times (0.40, 0.44, 0.68). WPF's DrawingContext has
+/// no blend modes, so it is a four-instruction pixel shader — hand-assembled ps_2_0 bytecode (no .fx compiler, no binary
+/// file in the repo):  texld r0, t0, s0 · mul r0, r0, c0 · mov oC0, r0.  Applied to the scene layer, so what is drawn
+/// above it (night lights, marks, the popped cat) stays bright, as on the Mac.
+sealed class FindMultiply : ShaderEffect
+{
+    static readonly PixelShader Shader = Make();
+    static PixelShader Make()
+    {
+        uint[] t =
+        {
+            0xFFFF0200,                                   // ps_2_0
+            0x0200001F, 0x80000000, 0xB0030000,           // dcl t0.xy
+            0x0200001F, 0xA0000000, 0xA00F0800,           // dcl_2d s0
+            0x03000042, 0x800F0000, 0xB0E40000, 0xA0E40800, // texld r0, t0, s0
+            0x03000005, 0x800F0000, 0x80E40000, 0xA0E40000, // mul r0, r0, c0
+            0x02000001, 0x800F0800, 0x80E40000,           // mov oC0, r0
+            0x0000FFFF,                                   // end
+        };
+        var bytes = new byte[t.Length * 4];
+        for (int i = 0; i < t.Length; i++) BitConverter.GetBytes(t[i]).CopyTo(bytes, i * 4);
+        var ps = new PixelShader();
+        ps.SetStreamSource(new System.IO.MemoryStream(bytes));
+        return ps;
+    }
+    public static readonly DependencyProperty InputProperty = RegisterPixelShaderSamplerProperty("Input", typeof(FindMultiply), 0);
+    public static readonly DependencyProperty FactorProperty = DependencyProperty.Register("Factor", typeof(System.Windows.Media.Media3D.Point4D), typeof(FindMultiply),
+        new UIPropertyMetadata(new System.Windows.Media.Media3D.Point4D(0.40, 0.44, 0.68, 1), PixelShaderConstantCallback(0)));
+    public FindMultiply() { PixelShader = Shader; UpdateShaderValue(InputProperty); UpdateShaderValue(FactorProperty); }
+    public System.Windows.Media.Media3D.Point4D Factor { get => (System.Windows.Media.Media3D.Point4D)GetValue(FactorProperty); set => SetValue(FactorProperty, value); }
+    public Brush Input { get => (Brush)GetValue(InputProperty); set => SetValue(InputProperty, value); }
 }
