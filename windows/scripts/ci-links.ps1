@@ -5,9 +5,10 @@
 param([string]$Exe, [string]$Out, [int]$Seconds = 30)
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+# (not `W`: the workflow runs this and ci-run.ps1 in one PowerShell session, and ci-run.ps1 already defines a type W)
 Add-Type @'
 using System; using System.Runtime.InteropServices;
-public static class W {
+public static class LinkWin {
   [DllImport("user32.dll")] public static extern bool MoveWindow(IntPtr h, int x, int y, int w, int hh, bool r);
   [DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extra);
 }
@@ -23,7 +24,7 @@ Log "screen $($b.Width)x$($b.Height)"
 $np = Start-Process notepad -PassThru
 Start-Sleep 2
 $h = (Get-Process -Id $np.Id).MainWindowHandle
-if ($h -ne 0) { [W]::MoveWindow($h, [int]($b.Width * 0.25), [int]($b.Height * 0.40), [int]($b.Width * 0.5), [int]($b.Height * 0.35), $true) | Out-Null }
+if ($h -ne 0) { [LinkWin]::MoveWindow($h, [int]($b.Width * 0.25), [int]($b.Height * 0.40), [int]($b.Width * 0.5), [int]($b.Height * 0.35), $true) | Out-Null }
 $cat = Start-Process $Exe -ArgumentList '--quit-after', $Seconds, '--scenario', 'sign', '--trace', "$Out\trace.txt" -PassThru `
   -RedirectStandardOutput "$Out/cat-stdout.txt" -RedirectStandardError "$Out/cat-stderr.txt"
 $t0 = Get-Date
@@ -63,7 +64,7 @@ Link 14 'cataholic://sign?count=0'                # down: the sign goes away, no
 Shot 15
 Link 16 'cataholic://sign?count=2&note=Esc%20test'  # up: whisper…
 At 16.9
-[W]::keybd_event(0x1B, 0, 0, [UIntPtr]::Zero); Start-Sleep -Milliseconds 120; [W]::keybd_event(0x1B, 0, 2, [UIntPtr]::Zero)   # …Esc hushes it
+[LinkWin]::keybd_event(0x1B, 0, 0, [UIntPtr]::Zero); Start-Sleep -Milliseconds 120; [LinkWin]::keybd_event(0x1B, 0, 2, [UIntPtr]::Zero)   # …Esc hushes it
 Log "t=16.9s Esc pressed"
 Shot 17.6                                         # sign 2, no bubble
 Link 18.5 'cataholic://zoomies'
