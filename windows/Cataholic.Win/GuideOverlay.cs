@@ -53,6 +53,10 @@ static class GuideNative
     /// "Show window contents while dragging" — off, and a window's rect only changes when you let go (nothing to draw).
     public static bool FullWindowDrag => SystemParametersInfo(0x26 /* SPI_GETDRAGFULLWINDOWS */, 0, out int v, 0) && v != 0;
 
+    [DllImport("user32.dll", EntryPoint = "SystemParametersInfoW")] static extern bool SystemParametersInfo(uint action, uint param, IntPtr value, uint winIni);
+    /// Test scenarios only: turn "Show window contents while dragging" on or off for this session (not saved).
+    public static void SetFullWindowDrag(bool on) => SystemParametersInfo(0x25 /* SPI_SETDRAGFULLWINDOWS */, on ? 1u : 0u, IntPtr.Zero, 0);
+
     /// A display: its pixel rect and its DPI scale (1 = 96 dpi).
     public readonly record struct Mon(IntPtr Handle, Win32.RECT Px, double Scale);
 

@@ -39,6 +39,8 @@ static class WindowGuides
     static Win32.RECT start, last;                                     // its frame (pixels) when the drag began / at the last look
     static List<Win32.RECT> others = new();                            // every other window's frame (pixels)
     static bool moving, dirty;
+    static bool full;                                                  // "Show window contents while dragging" was on when this drag began
+    static Win32.POINT grabbed;                                        // …and if not, the pointer then (the window only jumps on release: we follow the pointer)
     static HashSet<Guide> lit = new();
     static readonly Dictionary<IntPtr, GuideOverlay> overlays = new();
     static Later? tick;
@@ -85,10 +87,13 @@ static class WindowGuides
         target = h; last = start; moving = false; lit = new(); lastDrawn = "";
         int self = (int)h.ToInt64();
         others = CatGravity.Windows().Where(w => w.Id != self).Select(w => Px(w.Rect)).ToList();
-        moveHook = GuideNative.SetWinEventHook(GuideNative.EVENT_OBJECT_LOCATIONCHANGE, GuideNative.EVENT_OBJECT_LOCATIONCHANGE, IntPtr.Zero, OnEvent,
-            pid, tid, GuideNative.WINEVENT_OUTOFCONTEXT | GuideNative.WINEVENT_SKIPOWNPROCESS);
-        dirty = true;                                                   // look once right away, then on every 30th of a second that the window moved
-        tick = Later.Every(MinGap, _ => { if (dirty) { dirty = false; Drag(); } });
+        full = GuideNative.FullWindowDrag;
+        if (full)
+            moveHook = GuideNative.SetWinEventHook(GuideNative.EVENT_OBJECT_LOCATIONCHANGE, GuideNative.EVENT_OBJECT_LOCATIONCHANGE, IntPtr.Zero, OnEvent,
+                pid, tid, GuideNative.WINEVENT_OUTOFCONTEXT | GuideNative.WINEVENT_SKIPOWNPROCESS);
+        else Win32.GetCursorPos(out grabbed);
+        dirty = true;                                                   // look once right away, then on every 30th of a second that the window moved (outline drag: always)
+        tick = Later.Every(MinGap, _ => { if (dirty || !full) { dirty = false; Drag(); } });
     }
 
     static Win32.RECT Px(Rect r) => new() { Left = (int)Math.Round(r.Left * Display.Scale), Top = (int)Math.Round(r.Top * Display.Scale),
@@ -105,7 +110,14 @@ static class WindowGuides
 
     static void Drag()
     {
-        if (target == IntPtr.Zero || !Win32.FrameBounds(target, out var r)) return;
+        if (target == IntPtr.Zero) return;
+        Win32.RECT r;
+        if (full) { if (!Win32.FrameBounds(target, out r)) return; }
+        else                                                            // outline drag: the window itself stays put until you let go, so it is where it began + how far the pointer went
+        {
+            Win32.GetCursorPos(out var c);
+            r = start; r.Left += c.X - grabbed.X; r.Right += c.X - grabbed.X; r.Top += c.Y - grabbed.Y; r.Bottom += c.Y - grabbed.Y;
+        }
         // A move keeps the size; a resize (or a window restoring itself as you pull it off the top edge) does not — that
         // starts over from the new frame — and a drag that has not left the origin shows nothing yet.
         if (r.Right - r.Left != last.Right - last.Left || r.Bottom - r.Top != last.Bottom - last.Top) { last = start = r; return; }

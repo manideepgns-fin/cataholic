@@ -8,7 +8,7 @@ namespace Cataholic;
 // `--scenario <name>`: set the cat up in a known state and drive her, so a screenshot proves a behaviour (the cloud test
 // takes them; see windows/scripts/ci-run.ps1 and the workflow). Scenarios keep prefs in memory (Prefs.Ephemeral) and
 // never touch %APPDATA%. `--trace <file>` writes one line a second: where the cat is, what she is doing.
-//   rest · drop · taskbar · zoomies · herd20 · herd100 · own · menu · sleep · emotes · reduced · idlenap · touch · grid
+//   rest · drop · taskbar · zoomies · herd20 · herd100 · own · menu · sleep · emotes · reduced · idlenap · touch · grid · gridoutline
 static class Scenario
 {
     public static int Failures;
@@ -36,7 +36,7 @@ static class Scenario
             case "reduced": Stand(Notepad.Left + Notepad.Width / 2 - CatLayout.ScreenW / 2, Notepad.Top - CatGravity.Feet); Prefs.Set("crewHerd", 10.0); break;
         }
         if (name == "sleep") Prefs.Set("crewQuiet", true);
-        if (name == "grid") Prefs.Set("windowGuides", true);          // window grid: on from the start
+        if (name is "grid" or "gridoutline") Prefs.Set("windowGuides", true);          // window grid: on from the start
     }
     static void Stand(double left, double top)
     {
@@ -73,7 +73,7 @@ static class Scenario
                 At(1.5, () => CatPanel.CurrentModel?.StartAction(CatModel.Action.Hi, user: true));
                 At(4, CatPanel.Zoomies);
                 break;
-            case "grid": GridScenario.Run(At, Notepad, s => Trace(s)); break;           // window grid: drag Notepad with real input (GridScenario.cs)
+            case "grid": case "gridoutline": GridScenario.Run(name == "grid", At, Notepad, s => Trace(s)); break;           // window grid: drag Notepad with real input (GridScenario.cs)
             case "menu":
                 At(1.5, () => CatMenuPanel.Show(new Point(Display.Frame.Width * 0.55, 30)));
                 break;

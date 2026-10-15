@@ -4,7 +4,7 @@ using System.Windows;
 
 namespace Cataholic;
 
-// `--scenario grid` (window grid): the grid is on from the start (Scenario.Prepare), then Notepad is dragged by its
+// `--scenario grid` / `gridoutline` (window grid): the grid is on from the start (Scenario.Prepare), then Notepad is dragged by its
 // title bar with REAL input — SetCursorPos + mouse_event, as the `touch` scenario does for the cat — slowly across the
 // grid, and let go with its left edge on the centre line. The cloud test shoots: 3 s and 6 s (grid on, nothing moving:
 // the CPU at rest), 9 s (mid-drag: grid + bands), 13 s (left edge on the line: mint), 17 s (released: all gone).
@@ -13,8 +13,11 @@ static class GridScenario
     static Win32.RECT frame;                      // Notepad's visible frame (pixels) when it was grabbed
     static Point at;                              // the pointer, in pixels
 
-    public static void Run(Action<double, Action> when, Rect assumed, Action<string> log)
+    public static void Run(bool fullDrag, Action<double, Action> when, Rect assumed, Action<string> log)
     {
+        // `grid` drags with window contents showing (the LOCATIONCHANGE path); `gridoutline` with them off (the CI desktop's
+        // own setting) — the window then only jumps on release, and the grid follows the pointer instead
+        GuideNative.SetFullWindowDrag(fullDrag);
         double dx = 0;
         Point grab = default;
         when(5.5, () =>
