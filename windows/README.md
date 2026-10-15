@@ -4,7 +4,7 @@ The same cat as the Mac app, drawn in code with C# / .NET 8 / WPF. There are no 
 It covers the core cat: the 8 coats, gravity on windows and the taskbar, pet and purr, emotes, zoomies, More cats,
 On her own, Sleep, the menu and a tray paw.
 `cataholic://sign?count=3&note=…` and `cataholic://zoomies` links work (see "Links" below).
-Not yet ported: Find my cat, the window grid, auto-update.
+The window grid works (right-click → Grid). Not yet ported: Find my cat, auto-update.
 
 ## Build
 
@@ -24,7 +24,7 @@ The app compiles on a Mac, but it only runs on Windows.
 
 1. It renders `coats.png` and `poses.png` (`--render-coats`, `--render-poses`). Compare them with the Mac's
    `docs/cats.png`.
-2. It runs every test scenario next to a Notepad window (`--scenario rest|drop|taskbar|zoomies|herd20|herd100|own|menu|sleep|emotes|reduced|idlenap|touch`).
+2. It runs every test scenario next to a Notepad window (`--scenario rest|drop|taskbar|zoomies|herd20|herd100|own|menu|sleep|emotes|reduced|idlenap|touch|sign|grid|gridoutline`).
 3. It takes screenshots and logs the CPU and memory of the cat process.
 
 ```bash
@@ -46,6 +46,7 @@ windows/scripts/ci-proof.sh   # pushes the branch, waits for the run, downloads 
   - `Own` ← `CrewOwn`
   - `Sound` ← `CrewSound`
   - `CatMenu` ← `CatMenu`
+  - `WindowGuides` (+ `GuideOverlay`, `Wallpaper`) ← `WindowGuides`
 - `Win32.cs` holds every P/Invoke and `Display`, the one DPI helper.
 - Prefs are saved in `%APPDATA%\Cataholic\prefs.json` with the Mac's key names. Launch at login uses
   `HKCU\…\Run\Cataholic`.
@@ -77,3 +78,5 @@ windows/scripts/ci-proof.sh   # pushes the branch, waits for the run, downloads 
   through `Display`. CI only runs at 100% scale, so scaled displays are untested.
 - **Memory:** a WPF process starts at about 200 MB working set. That is the .NET and WPF baseline. Don't quote the
   Mac app's "~30 MB" for Windows.
+- **Show window contents while dragging:** the CI desktop has it OFF. Then Windows moves only an outline, and the window
+  sends no LOCATIONCHANGE events until you release it. The grid follows the pointer instead.
