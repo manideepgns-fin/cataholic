@@ -106,7 +106,7 @@ public static class CatDrawing
         public void Draw()
         {
             if (p.State == CatState.Running) { Canvas(Runner, 0); return; }
-            Canvas(Hanging, p.BreatheY);
+            Canvas(Hanging, p.BreatheY / Zoom);        // .offset(y:) is in screen points; the drawing is in box points
             // the z overlays sit OUTSIDE the Canvas in the Swift ZStack: not clipped, not moved by breatheY
             if (p.State == CatState.Nap && p.ZOpacity > 0)
             {
@@ -117,7 +117,7 @@ public static class CatDrawing
                     double rise = Math.Max(0, p.ZRise - k * 5), op = k == 0 ? p.ZOpacity : (p.ZRise > 5 ? p.ZOpacity : 0);
                     var g = Txt("z", k == 0 ? 9 : 7, "Segoe UI", FontWeights.Black, zx + rise * drift + k * 2, zy - rise, false);
                     dc.PushOpacity(op);
-                    for (int h = 0; h < 2; h++) Stroke(g, Paper, 1.2, true);          // .shadow(Paper, radius 1.2) twice (1.2 screen pt = 0.6 box pt each side)
+                    foreach (var (hw, ha) in new[] { (1.8, 0.2), (1.2, 0.3), (0.7, 0.4) }) Stroke(g, A(Paper, ha), hw, true);   // .shadow(Paper, radius 1.2) twice: a soft halo ~0.6 box pt wide
                     Fill(g, CatCoat.C(0.24, 0.26, 0.45));
                     dc.Pop();
                 }
@@ -129,8 +129,11 @@ public static class CatDrawing
             }
         }
 
-        /// NSColor.secondaryLabelColor (dark appearance) — the one colour with no Windows equivalent.
-        static readonly Color SecondaryLabel = Color.FromArgb(140, 235, 235, 245);
+        const double Zoom = 2;                         // CrewLayout.zoom
+
+        /// NSColor.secondaryLabelColor as the Mac reference renders it (light appearance: black at 50 %) — the one colour with no
+        /// Windows equivalent.
+        static readonly Color SecondaryLabel = Color.FromArgb(128, 0, 0, 0);
         static readonly Color SwiftGray = Color.FromRgb(142, 142, 147);
 
         /// Runs `body` inside the Swift Canvas: moved by `offsetY`, cropped to the 46 × 62 box.
@@ -417,7 +420,8 @@ public static class CatDrawing
                 if (p.Badge.Length > 0)
                 {
                     string shown = int.TryParse(p.Badge, out var n) && n > 9 ? "9+" : p.Badge;
-                    Fill(Txt(shown, 9.5, "Consolas", FontWeights.Bold, 7, 23, true), CatCoat.C(0.48, 0.33, 0.06));
+                    var tg = Txt(shown, 10.4, "Consolas", FontWeights.Bold, 7, 23, true);   // SF Mono Bold is a touch bigger and heavier than Consolas Bold
+                    Fill(tg, CatCoat.C(0.48, 0.33, 0.06)); Stroke(tg, CatCoat.C(0.48, 0.33, 0.06), 0.3, true);
                 }
             }
             if (s == CatState.Groom && p.GroomPaw is Point g && Hypot(g.X - 29, g.Y - 36) > 2)
