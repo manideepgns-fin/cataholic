@@ -7,7 +7,7 @@ branch=$(git branch --show-current); sha=$(git rev-parse HEAD)
 git push -q origin "$branch"
 echo "waiting for the windows run on $branch @ ${sha:0:7}…"
 for _ in $(seq 60); do
-  id=$(gh run list --workflow windows.yml --branch "$branch" --json databaseId,headSha -q ".[] | select(.headSha==\"$sha\") | .databaseId" | head -1)
+  id=$(gh run list --commit "$sha" --json databaseId,workflowName -q ".[] | select(.workflowName==\"windows\") | .databaseId" 2>/dev/null | head -1)
   [ -n "$id" ] && break; sleep 5
 done
 [ -n "${id:-}" ] || { echo "no run found"; exit 1; }
