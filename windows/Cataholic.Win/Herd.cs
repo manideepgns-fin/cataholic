@@ -4,14 +4,18 @@ using System.Diagnostics;
 using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Threading;
 
 namespace Cataholic;
 
 // CatHerd — the cat multiplier (owner 27 Sep 2026: "my screen covered with cats … the right button i can select how many
-// cats"). The extra cats live in ONE full-screen overlay window that ignores the mouse, so a screen full of cats never
-// blocks a click; only the main cat (CatPanel) is pettable. Each herd cat is a tiny state machine — rain in from above
-// the screen, land, sit, wander along its floor, nap melted flat, dash (zoomies) — standing on the same floors as the
-// main cat (CatGravity: the taskbar line and the tops of windows). Random coats.
+// cats"). Every extra cat is its OWN small window that ignores the mouse, so a screen full of cats never blocks a click;
+// only the main cat (CatPanel) is pettable. (One full-screen transparent overlay was tried first: a layered window is
+// rendered in software, so every frame re-rendered the whole screen — a full CPU core for 20 cats.) Moving a cat moves its
+// window and redraws nothing; a cat is redrawn only when its pose changes, so a sitting or napping cat costs nothing.
+// Each herd cat is a tiny state machine — rain in from above the screen, land, sit, wander along its floor, nap melted
+// flat, dash (zoomies) — standing on the same floors as the main cat (CatGravity: the taskbar line and the tops of
+// windows). Random coats.
 sealed class CatHerd
 {
     public static readonly int[] Sizes = { 0, 3, 10, 25, 50, 100 };
@@ -30,24 +34,29 @@ sealed class CatHerd
         public double Facing = 1;
         public double Phase;
         public double Squash = 1;
-        public bool Dirty = true;                   // redraw me (a sitting cat needs no redraw)
+        public HerdCatWindow? Win;                  // made when the cat first comes into view
     }
 
     public static readonly CatHerd Shared = new();
     public List<Cat> Cats { get; private set; } = new();
-    HerdWindow? window;
-    Later? timer;
+    /// For the trace: windows made, window moves, pose redraws since the herd was last rebuilt.
+    public int Windows, Moves, Draws;
+    DispatcherTimer? timer;
     List<CatGravity.Win> wins = new();
     double winsAt, last;
     static readonly Stopwatch Clk = Stopwatch.StartNew();
     static double Clock => Clk.Elapsed.TotalSeconds;
+    const double Tick = 1.0 / 30;                    // while anything moves
+    const double FloorsEvery = 1;                    // the windows are re-read this often, moving or not
 
     /// Rebuild the herd for the chosen count (menu, launch, screen change). Sleep mode and Reduce Motion: no herd.
     public void Restart()
     {
-        timer?.Cancel(); timer = null;
+        timer?.Stop(); timer = null;
+        foreach (var c in Cats) c.Win?.Close();
+        Windows = Moves = Draws = 0;
         int n = CatPrefs.Quiet || Fx.Reduced || !CatPrefs.ShowCrew ? 0 : Count;
-        if (n <= 0) { window?.Hide(); Cats = new(); return; }
+        if (n <= 0) { Cats = new(); return; }
         double w = CatLayout.ScreenW;
         Cats = new();
         for (int i = 0; i < n; i++)
@@ -58,26 +67,25 @@ sealed class CatHerd
                 Feet = -Rnd.In(40, 900),                                    // above the screen: they rain in, staggered
                 Vx = Rnd.In(-120, 120),
             });
-        window ??= new HerdWindow();
-        window.Cover(Display.Frame);
-        window.Show();
-        window.Rebuild(Cats);
-        CatPanel.Raise();                                                   // the main cat stays on top of its herd
         last = Clock;
         wins = CatGravity.Windows(); winsAt = last;                         // floors known before the first cat lands
-        timer = Later.Every(1.0 / 30, _ => Step());
+        timer = new DispatcherTimer(DispatcherPriority.Normal) { Interval = TimeSpan.FromSeconds(Tick) };
+        timer.Tick += (_, _) => Step();
+        timer.Start();
     }
 
     void Step()
     {
         double now = Clock, dt = Math.Min(now - last, 1.0 / 15); last = now;
-        if (now - winsAt > 1) { wins = CatGravity.Windows(); winsAt = now; }          // floors, once a second
+        bool floors = now - winsAt > FloorsEvery;
+        if (floors) { wins = CatGravity.Windows(); winsAt = now; }                    // floors, once a second
         double w = CatLayout.ScreenW, z = CatLayout.Zoom;
         double minX = Display.Frame.Left, maxX = Display.Frame.Right - w;
         CatGravity.Floor FloorOf(Cat c, double from) => CatGravity.FloorBelow(c.X + w / 2, from, wins);
+        bool busy = false, made = false;
+        double wake = winsAt + FloorsEvery;                                           // when nothing moves: floors or the next mode timer
         foreach (var c in Cats)
         {
-            var before = c.Mode;
             c.Squash += (1 - c.Squash) * Math.Min(1, dt * 9);
             if (Math.Abs(1 - c.Squash) < 0.002) c.Squash = 1;
             switch (c.Mode)
@@ -108,18 +116,28 @@ sealed class CatHerd
                     break;
                 }
                 default:
-                    if (now > c.Until) Next(c, now);
+                    // a window moved or closed under a sitting cat: it falls (checked whenever the floors are re-read)
+                    if (floors && !OnFloor(c)) c.Mode = Mode.Fall;
+                    else if (now > c.Until) Next(c, now);
                     break;
             }
-            if (c.Mode != Mode.Sit && c.Mode != Mode.Nap || c.Mode != before || c.Squash != 1) c.Dirty = true;
+            // the window follows the cat; the picture is redrawn only if the pose changed
+            if (c.Win == null && c.Feet - CatGravity.Feet - HerdCatWindow.Pad + HerdCatWindow.H > 0)
+            {
+                c.Win = new HerdCatWindow(c.Coat); Windows++; made = true;
+            }
+            if (c.Win != null)
+            {
+                if (c.Win.Draw(c, now)) Draws++;                                  // (before the first Show: it appears drawn)
+                if (c.Win.MoveTo(c.X - HerdCatWindow.Pad, c.Feet - CatGravity.Feet - HerdCatWindow.Pad)) Moves++;
+                busy |= c.Win.Stale(c);
+            }
+            busy |= c.Mode is Mode.Fall or Mode.Walk or Mode.Zoom || c.Squash != 1;
+            if (c.Mode is Mode.Sit or Mode.Nap) wake = Math.Min(wake, c.Until);
         }
-        // a window moved or closed under a sitting cat: it falls (checked in a rolling slice — cheap at 100 cats)
-        if (Cats.Count > 0)
-        {
-            int k = (int)(now * 30) % Cats.Count;
-            if ((Cats[k].Mode == Mode.Sit || Cats[k].Mode == Mode.Nap) && !OnFloor(Cats[k])) { Cats[k].Mode = Mode.Fall; Cats[k].Dirty = true; }
-        }
-        window?.Sync(Cats);
+        if (made) CatPanel.Raise();                                                   // the main cat stays on top of its herd
+        // still herd: sleep until the next mode timer ends or the floors are due — not 30 times a second
+        timer!.Interval = TimeSpan.FromSeconds(busy ? Tick : Math.Max(wake - now, 0.01));
     }
     bool OnFloor(Cat c) => CatGravity.Supported(c.X + CatLayout.ScreenW / 2, c.Feet, wins);
     static void Settle(Cat c, double now) { c.Mode = Mode.Sit; c.Until = now + Rnd.In(1.5, 5); }
@@ -132,52 +150,77 @@ sealed class CatHerd
         if (r < 45) { c.Mode = Mode.Walk; c.Target = Rnd.In(lo, hi); }
         else if (r < 72) { c.Mode = Mode.Nap; c.Until = now + Rnd.In(6, 20); }
         else if (r < 84) { c.Mode = Mode.Zoom; c.Target = Math.Abs(c.X - lo) > Math.Abs(c.X - hi) ? lo : hi; }
-        else { c.Mode = Mode.Sit; c.Until = now + Rnd.In(2, 6); if (Rnd.Bool()) { c.Facing *= -1; c.Dirty = true; } }
+        else { c.Mode = Mode.Sit; c.Until = now + Rnd.In(2, 6); if (Rnd.Bool()) c.Facing *= -1; }
     }
 }
 
-/// The overlay: one transparent, click-through, full-screen window; each herd cat is its own DrawingVisual, redrawn only
-/// when it changed (a sitting cat costs nothing).
-sealed class HerdWindow : Window
+/// One herd cat: a small borderless, transparent, topmost window that ignores the mouse, the character box + a margin
+/// (CatLayout). Moving the cat is SetWindowPos — no redraw; the picture is redrawn only when the pose changes.
+sealed class HerdCatWindow : Window
 {
-    readonly HerdCanvas canvas = new();
-    IntPtr hwnd;
-    Rect cover = Display.Frame;
+    public const double Pad = CatLayout.Margin * CatLayout.Zoom;          // the margin around the 46×62 box, on screen
+    public const double W = CatLayout.ScreenW + 2 * Pad, H = CatLayout.ScreenH + 2 * Pad;
+    const double Gap = 0.04, ZoomGap = 0.028;       // fewest seconds between two redraws: legs at ~15 fps walking, every tick dashing
 
-    public HerdWindow()
+    readonly CatSprite sprite = new();
+    readonly CatCoat coat;
+    IntPtr hwnd;
+    double left, top;
+    int px = int.MinValue, py = int.MinValue;
+    // what is on the window now
+    bool drawn;
+    CatHerd.Mode dMode; double dPhase, dSquash, dFacing, dAt;
+
+    public HerdCatWindow(CatCoat coat)
     {
+        this.coat = coat;
         WindowStyle = WindowStyle.None; AllowsTransparency = true; Background = Brushes.Transparent;
         Topmost = true; ShowInTaskbar = false; ShowActivated = false; ResizeMode = ResizeMode.NoResize;
-        Left = 0; Top = 0; Width = cover.Width; Height = cover.Height;
-        Content = canvas;
+        Width = W; Height = H;
+        Content = sprite;
         SourceInitialized += (_, _) =>
         {
             hwnd = new WindowInteropHelper(this).Handle;
             // never blocks a click: transparent to the mouse, never activates, no Alt-Tab entry
             Win32.AddExStyle(hwnd, Win32.WS_EX_NOACTIVATE | Win32.WS_EX_TOOLWINDOW | Win32.WS_EX_TRANSPARENT | Win32.WS_EX_LAYERED);
-            Display.Place(hwnd, cover);
+            Display.Place(hwnd, new Rect(left, top, W, H));
         };
+        Left = left; Top = top;
     }
-    public void Cover(Rect r) { cover = r; if (hwnd != IntPtr.Zero) Display.Place(hwnd, r); }
-    public void Rebuild(List<CatHerd.Cat> cats) => canvas.Rebuild(cats);
-    public void Sync(List<CatHerd.Cat> cats) => canvas.Sync(cats);
+
+    /// Put the window at (x, y) DIPs; true if it actually moved a pixel.
+    public bool MoveTo(double x, double y)
+    {
+        left = x; top = y;
+        int nx = Display.Px(x), ny = Display.Px(y);
+        if (nx == px && ny == py) return false;
+        px = nx; py = ny;
+        if (hwnd == IntPtr.Zero) { Left = x; Top = y; Show(); return true; }                 // first time: shown where it belongs
+        Win32.SetWindowPos(hwnd, IntPtr.Zero, nx, ny, 0, 0, Win32.SWP_NOSIZE | Win32.SWP_NOZORDER | Win32.SWP_NOACTIVATE);
+        return true;
+    }
+
+    public bool Stale(CatHerd.Cat c) => !drawn || dMode != c.Mode || dPhase != c.Phase || dSquash != c.Squash || dFacing != c.Facing;
+
+    /// Redraw if the pose changed (a turn or a new mode at once; leg phase and squash at most every `Gap`). true if redrawn.
+    public bool Draw(CatHerd.Cat c, double now)
+    {
+        if (!Stale(c)) return false;
+        bool now_ = !drawn || dMode != c.Mode || dFacing != c.Facing;
+        if (!now_ && now - dAt < (c.Mode == CatHerd.Mode.Zoom ? ZoomGap : Gap)) return false;
+        drawn = true; dMode = c.Mode; dPhase = c.Phase; dSquash = c.Squash; dFacing = c.Facing; dAt = now;
+        sprite.Draw(c, coat);
+        return true;
+    }
 }
 
-sealed class HerdCanvas : FrameworkElement
+sealed class CatSprite : FrameworkElement
 {
-    readonly List<DrawingVisual> visuals = new();
-    readonly CatPose pose = new() { Pin = false };
-
-    public void Rebuild(List<CatHerd.Cat> cats)
-    {
-        foreach (var v in visuals) RemoveVisualChild(v);
-        visuals.Clear();
-        foreach (var _ in cats) { var v = new DrawingVisual(); visuals.Add(v); AddVisualChild(v); }
-        foreach (var c in cats) c.Dirty = true;
-        Sync(cats);
-    }
-    protected override int VisualChildrenCount => visuals.Count;
-    protected override Visual GetVisualChild(int index) => visuals[index];
+    readonly DrawingVisual visual = new();
+    static readonly CatPose Pose = new() { Pin = false };
+    public CatSprite() => AddVisualChild(visual);
+    protected override int VisualChildrenCount => 1;
+    protected override Visual GetVisualChild(int index) => visual;
 
     static CatState Skin(CatHerd.Cat c) => c.Mode switch
     {
@@ -187,20 +230,14 @@ sealed class HerdCanvas : FrameworkElement
         _ => CatState.Look,
     };
 
-    public void Sync(List<CatHerd.Cat> cats)
+    public void Draw(CatHerd.Cat c, CatCoat coat)
     {
-        for (int i = 0; i < cats.Count && i < visuals.Count; i++)
-        {
-            var c = cats[i];
-            if (!c.Dirty) continue;
-            c.Dirty = false;
-            using var dc = visuals[i].RenderOpen();
-            pose.State = Skin(c); pose.RunPhase = c.Phase; pose.Stride = c.Mode == CatHerd.Mode.Zoom ? 38 : 22; pose.CoatOverride = c.Coat;
-            dc.PushTransform(new TranslateTransform(c.X - Display.Frame.Left, c.Feet - CatGravity.Feet));
-            dc.PushTransform(new ScaleTransform(CatLayout.Zoom, CatLayout.Zoom));
-            dc.PushTransform(new ScaleTransform(c.Facing * (1 + (1 - c.Squash) * 0.6), c.Squash, 23, 49));
-            CatDrawing.Draw(dc, pose);
-            dc.Pop(); dc.Pop(); dc.Pop();
-        }
+        using var dc = visual.RenderOpen();
+        Pose.State = Skin(c); Pose.RunPhase = c.Phase; Pose.Stride = c.Mode == CatHerd.Mode.Zoom ? 38 : 22; Pose.CoatOverride = coat;
+        dc.PushTransform(new TranslateTransform(HerdCatWindow.Pad, HerdCatWindow.Pad));
+        dc.PushTransform(new ScaleTransform(CatLayout.Zoom, CatLayout.Zoom));
+        dc.PushTransform(new ScaleTransform(c.Facing * (1 + (1 - c.Squash) * 0.6), c.Squash, 23, 49));
+        CatDrawing.Draw(dc, Pose);
+        dc.Pop(); dc.Pop(); dc.Pop();
     }
 }

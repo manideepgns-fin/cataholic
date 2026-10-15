@@ -121,7 +121,7 @@ static class Scenario
             var fl = r is Rect rr ? CatGravity.FloorBelow(rr.Left + rr.Width / 2, rr.Top + CatGravity.Feet - 3, CatGravity.Windows()) : default;
             msg += $" box={(r is Rect b ? $"{b.Left:0},{b.Top:0}" : "-")} feet={(r is Rect f ? $"{f.Top + CatGravity.Feet:0}" : "-")} floor={fl.Y:0}/{(fl.Window?.ToString() ?? "taskbar")}"
                  + $" hang={CatPanel.Hanging} air={m.Airborne} act={m.Act} run={m.RunFacing} zoom={CatPanel.Zooming} busy={CatPanel.Busy}"
-                 + $" herd={CatHerd.Shared.Cats.Count} idle={Win32.IdleSeconds:0}";
+                 + $" herd={CatHerd.Shared.Cats.Count} win={CatHerd.Shared.Windows} moves={CatHerd.Shared.Moves} draws={CatHerd.Shared.Draws} idle={Win32.IdleSeconds:0}";
         }
         trace.WriteLine(msg);
     }
